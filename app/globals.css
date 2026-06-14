@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f7fb;
+  --surface: #ffffff;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --border: #e7e9f0;
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --ring: rgba(99, 102, 241, 0.35);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b1020;
+    --surface: #141a2e;
+    --foreground: #e8ebf5;
+    --muted: #94a3b8;
+    --border: #25304d;
+    --primary: #818cf8;
+    --primary-hover: #6366f1;
+    --ring: rgba(129, 140, 248, 0.4);
+  }
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(168, 85, 247, 0.08), transparent 55%),
+    var(--background);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border shadow-sm;
+    background-color: var(--surface);
+    border-color: var(--border);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+    background-image: linear-gradient(135deg, #6366f1, #8b5cf6);
+    box-shadow: 0 6px 16px -6px rgba(99, 102, 241, 0.6);
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.07);
+    box-shadow: 0 8px 22px -6px rgba(99, 102, 241, 0.7);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors duration-150;
+    border: 1px solid var(--border);
+    background-color: var(--surface);
+    color: var(--foreground);
+  }
+  .btn-ghost:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  .field {
+    @apply w-full rounded-xl px-3.5 py-2.5 text-sm transition-shadow duration-150 outline-none;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+  }
+  .field:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px var(--ring);
+  }
+  .field::placeholder {
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium;
+    color: var(--foreground);
+  }
+}
+
+.text-muted {
+  color: var(--muted);
+}
