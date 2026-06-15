@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { getGenerator } from "@/lib/llm";
+import { expandTopic } from "@/lib/expand";
 import { extractText } from "@/lib/extract";
 import { z } from "zod";
 
@@ -60,10 +61,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Source text too short" }, { status: 400 });
   }
 
+  // For a bare topic ("prompt") — or thin notes/PDF text — first expand the
+  // input into a detailed study briefing via Gemini, so the quiz generator has
+  // rich, accurate grounding material. Best-effort: falls back to the raw text.
+  const THIN_INPUT_CHARS = 500;
+  let materialText = sourceText;
+  if (sourceType === "prompt" || sourceText.length < THIN_INPUT_CHARS) {
+    const expanded = await expandTopic(sourceText, userPrompt);
+    if (expanded && expanded.length > sourceText.length) materialText = expanded;
+  }
+
   try {
     const generator = getGenerator();
     const generated = await generator.generate({
-      sourceText,
+      sourceText: materialText,
       userPrompt,
       questionCount,
       seed: Math.floor(Math.random() * 1_000_000),

@@ -25,10 +25,11 @@ type DashboardData = {
   byTopic: { topic: string; accuracy: number; total: number }[];
 };
 
+// Difficulty palette — emerald / amber / rose (design system semantic colors)
 const difficultyColor: Record<string, string> = {
   easy: "#10b981",
   medium: "#f59e0b",
-  hard: "#ef4444",
+  hard: "#f43f5e",
 };
 
 export default function DashboardPage() {
