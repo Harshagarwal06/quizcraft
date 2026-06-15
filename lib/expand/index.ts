@@ -3,7 +3,7 @@
 // material for the downstream quiz generator. Best-effort: any failure returns
 // null so the caller falls back to the raw input.
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 // Cap the call so the second-stage generation still fits the route's maxDuration.
 const TIMEOUT_MS = 20_000;
@@ -62,7 +62,13 @@ export async function expandTopic(seed: string, userPrompt?: string): Promise<st
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: EXPANSION_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: buildRequest(seed, userPrompt) }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
+        generationConfig: {
+          temperature: 0.4,
+          maxOutputTokens: 4096,
+          // Disable "thinking" (on by default for Gemini 2.5): a factual briefing
+          // needs no reasoning tokens, and it keeps the call fast + within budget.
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
     });
 

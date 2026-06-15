@@ -165,7 +165,7 @@ See `.env.example`. Key ones:
 - `LLM_PROVIDER` = `hf` | `anthropic`
 - `HF_API_KEY` (HuggingFace) / `ANTHROPIC_API_KEY` (Anthropic)
 - `GEMINI_API_KEY` (optional; enables the topic-expansion pre-stage) +
-  `GEMINI_MODEL` (optional, default `gemini-2.0-flash`)
+  `GEMINI_MODEL` (optional, default `gemini-2.5-flash`)
 - `NEXTAUTH_SECRET` / `AUTH_SECRET`, `NEXTAUTH_URL` / `AUTH_URL`,
   `AUTH_TRUST_HOST` (read even though auth is currently bypassed)
 
