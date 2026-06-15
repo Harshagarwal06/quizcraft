@@ -3,6 +3,18 @@ import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
+  try {
+    return await buildDashboard();
+  } catch (err) {
+    console.error("[dashboard] failed:", err);
+    return NextResponse.json(
+      { overallAccuracy: 0, totalAttempts: 0, totalAnswered: 0, accuracyOverTime: [], byDifficulty: [], byTopic: [] },
+      { status: 200 }
+    );
+  }
+}
+
+async function buildDashboard() {
   const userId = await getCurrentUserId();
 
   const [attempts, answerRecords] = await Promise.all([
@@ -30,13 +42,14 @@ export async function GET() {
   const accuracyOverTime = attempts.map((a) => ({
     date: a.startedAt.toISOString().slice(0, 10),
     accuracy: a.totalQuestions > 0 ? Math.round(((a.score ?? 0) / a.totalQuestions) * 100) : 0,
-    quizTitle: a.quiz.title,
+    quizTitle: a.quiz?.title ?? "Untitled quiz",
   }));
 
   // Per-difficulty breakdown
   const difficultyMap: Record<string, { correct: number; total: number }> = {};
   for (const r of answerRecords) {
-    const d = r.question.difficulty;
+    const d = r.question?.difficulty;
+    if (!d) continue;
     if (!difficultyMap[d]) difficultyMap[d] = { correct: 0, total: 0 };
     difficultyMap[d].total++;
     if (r.isCorrect) difficultyMap[d].correct++;
@@ -50,7 +63,8 @@ export async function GET() {
   // Per-topic breakdown (top 10)
   const topicMap: Record<string, { correct: number; total: number }> = {};
   for (const r of answerRecords) {
-    const t = r.question.topic;
+    const t = r.question?.topic;
+    if (!t) continue;
     if (!topicMap[t]) topicMap[t] = { correct: 0, total: 0 };
     topicMap[t].total++;
     if (r.isCorrect) topicMap[t].correct++;

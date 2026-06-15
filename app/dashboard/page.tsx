@@ -37,11 +37,19 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetch("/api/dashboard")
-      .then((r) => r.json())
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      });
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setData(d))
+      .catch(() =>
+        setData({
+          overallAccuracy: 0,
+          totalAttempts: 0,
+          totalAnswered: 0,
+          accuracyOverTime: [],
+          byDifficulty: [],
+          byTopic: [],
+        })
+      )
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) {
