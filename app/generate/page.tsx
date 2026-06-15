@@ -48,7 +48,10 @@ export default function GeneratePage() {
 
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Generation failed.");
+        // Include the server-provided detail (provider/quota/config reason) so
+        // failures are self-diagnosing instead of a generic message.
+        const detail = data.detail ? ` (${data.provider ?? "llm"}: ${data.detail})` : "";
+        setError((data.error ?? "Generation failed.") + detail);
         return;
       }
 
