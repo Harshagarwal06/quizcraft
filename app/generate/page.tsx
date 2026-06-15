@@ -94,7 +94,7 @@ export default function GeneratePage() {
           {/* Tab selector */}
           <div
             className="grid grid-cols-3 gap-1 rounded-xl p-1"
-            style={{ backgroundColor: "color-mix(in srgb, var(--foreground) 5%, transparent)" }}
+            style={{ backgroundColor: "var(--surface-sunk)" }}
           >
             {tabs.map((t) => (
               <button
@@ -104,7 +104,7 @@ export default function GeneratePage() {
                 className="flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-all"
                 style={
                   tab === t.id
-                    ? { backgroundColor: "var(--surface)", color: "var(--primary)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
+                    ? { backgroundColor: "var(--surface)", color: "var(--primary)", boxShadow: "var(--shadow-sm)" }
                     : { color: "var(--muted)" }
                 }
               >
@@ -186,16 +186,32 @@ export default function GeneratePage() {
 
           <div>
             <label className="label">
-              Questions: <span style={{ color: "var(--primary)" }}>{questionCount}</span>
+              Questions:{" "}
+              <span className="font-semibold" style={{ color: "var(--primary)" }}>{questionCount}</span>
             </label>
-            <input
-              type="range"
-              min={3}
-              max={15}
-              value={questionCount}
-              onChange={(e) => setQuestionCount(Number(e.target.value))}
-              className="w-full accent-indigo-500"
-            />
+            {/* Gradient-filled track behind a transparent native range */}
+            <div className="relative flex h-5 items-center">
+              <div
+                className="absolute h-1.5 w-full rounded-full"
+                style={{ backgroundColor: "var(--border)" }}
+              />
+              <div
+                className="absolute h-1.5 rounded-full"
+                style={{
+                  width: `${((questionCount - 3) / (15 - 3)) * 100}%`,
+                  backgroundImage: "var(--brand-gradient-h)",
+                }}
+              />
+              <input
+                type="range"
+                min={3}
+                max={15}
+                value={questionCount}
+                onChange={(e) => setQuestionCount(Number(e.target.value))}
+                className="relative m-0 h-5 w-full cursor-pointer appearance-none bg-transparent"
+                style={{ accentColor: "var(--primary)" }}
+              />
+            </div>
             <div className="mt-0.5 flex justify-between text-xs text-muted">
               <span>3</span>
               <span>15</span>

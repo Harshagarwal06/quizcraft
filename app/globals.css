@@ -1,19 +1,95 @@
 @import "tailwindcss";
 
+/* ============================================================
+   QuizCraft design system — token foundation
+   Mirrors the Claude Design handoff (tokens/colors, spacing,
+   typography). Reach for the semantic aliases in product code.
+   ============================================================ */
 :root {
-  --background: #f6f7fb;
+  /* ---- Brand: indigo → violet ---- */
+  --indigo-400: #818cf8;
+  --indigo-500: #6366f1; /* primary */
+  --indigo-600: #4f46e5; /* primary hover */
+  --violet-500: #8b5cf6; /* gradient end */
+  --brand-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --brand-gradient-h: linear-gradient(90deg, #6366f1, #8b5cf6);
+
+  /* ---- Neutrals (slate) ---- */
+  --slate-200: #e7e9f0;
+  --slate-300: #cbd5e1;
+  --slate-500: #64748b;
+  --slate-900: #0f172a;
+  --canvas: #f6f7fb;
+
+  /* ---- Semantic status ---- */
+  --emerald-100: #d1fae5;
+  --emerald-500: #10b981; /* easy / correct */
+  --emerald-700: #047857;
+  --emerald-800: #065f46;
+  --emerald-bg: #ecfdf5;
+  --amber-100: #fef3c7;
+  --amber-500: #f59e0b; /* medium */
+  --amber-700: #b45309;
+  --rose-100: #ffe4e6;
+  --rose-500: #f43f5e; /* hard / incorrect */
+  --rose-600: #e11d48;
+  --rose-700: #be123c;
+  --rose-800: #9f1239;
+  --rose-bg: #fff1f2;
+
+  /* ---- Semantic aliases ---- */
+  --background: var(--canvas);
   --surface: #ffffff;
-  --foreground: #0f172a;
-  --muted: #64748b;
-  --border: #e7e9f0;
-  --primary: #6366f1;
-  --primary-hover: #4f46e5;
+  --surface-sunk: #f1f5f9;
+  --foreground: var(--slate-900);
+  --muted: var(--slate-500);
+  --text-muted: var(--muted);
+  --border: var(--slate-200);
+  --border-strong: var(--slate-300);
+
+  --primary: var(--indigo-500);
+  --primary-hover: var(--indigo-600);
+  --primary-soft: color-mix(in srgb, var(--primary) 14%, transparent);
   --ring: rgba(99, 102, 241, 0.35);
+
+  /* Difficulty + status (player + dashboard) */
+  --difficulty-easy: var(--emerald-500);
+  --difficulty-medium: var(--amber-500);
+  --difficulty-hard: var(--rose-500);
+  --success: var(--emerald-500);
+  --warning: var(--amber-500);
+  --danger: var(--rose-500);
+
+  /* ---- Corner radii ---- */
+  --radius-sm: 0.5rem; /* 8 */
+  --radius-md: 0.75rem; /* 12 — buttons, fields, options */
+  --radius-lg: 1rem; /* 16 — cards */
+  --radius-xl: 1.25rem; /* 20 */
+  --radius-full: 9999px;
+
+  /* ---- Shadows ---- */
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.1);
+  --shadow-lg: 0 12px 28px -8px rgba(15, 23, 42, 0.18);
+  --shadow-brand: 0 6px 16px -6px rgba(99, 102, 241, 0.6);
+  --shadow-brand-hover: 0 8px 22px -6px rgba(99, 102, 241, 0.7);
+  --focus-ring: 0 0 0 4px var(--ring);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-base: 150ms;
+  --dur-slow: 500ms; /* progress + topic bars */
+
+  /* ---- App background wash (fixed indigo + violet radial blobs) ---- */
+  --bg-wash: radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.1), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(168, 85, 247, 0.08), transparent 55%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-sunk: var(--surface-sunk);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
@@ -23,24 +99,42 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ---- Dark theme: automatic (prefers-color-scheme) + opt-in [data-theme] ---- */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    --canvas: #0b1020;
     --background: #0b1020;
     --surface: #141a2e;
+    --surface-sunk: #1c2440;
     --foreground: #e8ebf5;
     --muted: #94a3b8;
+    --text-muted: #94a3b8;
     --border: #25304d;
-    --primary: #818cf8;
-    --primary-hover: #6366f1;
+    --border-strong: #334155;
+    --primary: var(--indigo-400);
+    --primary-hover: var(--indigo-500);
+    --primary-soft: color-mix(in srgb, var(--indigo-400) 20%, transparent);
     --ring: rgba(129, 140, 248, 0.4);
   }
 }
+:root[data-theme="dark"] {
+  --canvas: #0b1020;
+  --background: #0b1020;
+  --surface: #141a2e;
+  --surface-sunk: #1c2440;
+  --foreground: #e8ebf5;
+  --muted: #94a3b8;
+  --text-muted: #94a3b8;
+  --border: #25304d;
+  --border-strong: #334155;
+  --primary: var(--indigo-400);
+  --primary-hover: var(--indigo-500);
+  --primary-soft: color-mix(in srgb, var(--indigo-400) 20%, transparent);
+  --ring: rgba(129, 140, 248, 0.4);
+}
 
 body {
-  background:
-    radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
-    radial-gradient(900px 500px at -10% 10%, rgba(168, 85, 247, 0.08), transparent 55%),
-    var(--background);
+  background: var(--bg-wash), var(--background);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
@@ -48,24 +142,27 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-2xl border shadow-sm;
+    @apply rounded-2xl border;
     background-color: var(--surface);
     border-color: var(--border);
+    box-shadow: var(--shadow-sm);
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
-    background-image: linear-gradient(135deg, #6366f1, #8b5cf6);
-    box-shadow: 0 6px 16px -6px rgba(99, 102, 241, 0.6);
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50;
+    transition-duration: var(--dur-base);
+    background-image: var(--brand-gradient);
+    box-shadow: var(--shadow-brand);
   }
   .btn-primary:hover:not(:disabled) {
     filter: brightness(1.07);
-    box-shadow: 0 8px 22px -6px rgba(99, 102, 241, 0.7);
+    box-shadow: var(--shadow-brand-hover);
     transform: translateY(-1px);
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors duration-150;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors;
+    transition-duration: var(--dur-base);
     border: 1px solid var(--border);
     background-color: var(--surface);
     color: var(--foreground);
@@ -76,14 +173,15 @@ body {
   }
 
   .field {
-    @apply w-full rounded-xl px-3.5 py-2.5 text-sm transition-shadow duration-150 outline-none;
+    @apply w-full rounded-xl px-3.5 py-2.5 text-sm outline-none transition-shadow;
+    transition-duration: var(--dur-base);
     background-color: var(--surface);
     border: 1px solid var(--border);
     color: var(--foreground);
   }
   .field:focus {
     border-color: var(--primary);
-    box-shadow: 0 0 0 4px var(--ring);
+    box-shadow: var(--focus-ring);
   }
   .field::placeholder {
     color: var(--muted);
@@ -93,6 +191,23 @@ body {
   .label {
     @apply mb-1.5 block text-sm font-medium;
     color: var(--foreground);
+  }
+
+  /* Difficulty / correctness chips — emerald / amber / rose */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-easy {
+    background: var(--emerald-100);
+    color: var(--emerald-700);
+  }
+  .badge-medium {
+    background: var(--amber-100);
+    color: var(--amber-700);
+  }
+  .badge-hard {
+    background: var(--rose-100);
+    color: var(--rose-700);
   }
 }
 

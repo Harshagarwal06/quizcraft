@@ -165,7 +165,7 @@ export default function QuizPage() {
   if (phase === "results") {
     const pct = Math.round((finalScore / quiz.questionCount) * 100);
     const tone =
-      pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#ef4444";
+      pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#f43f5e";
     return (
       <div className="px-4 py-10">
         <div className="mx-auto max-w-2xl">
@@ -198,7 +198,7 @@ export default function QuizPage() {
               <div
                 key={r.questionId}
                 className="card overflow-hidden p-5"
-                style={{ borderLeft: `4px solid ${r.isCorrect ? "#10b981" : "#ef4444"}` }}
+                style={{ borderLeft: `4px solid ${r.isCorrect ? "#10b981" : "#f43f5e"}` }}
               >
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <p className="text-sm font-semibold leading-snug">
@@ -234,7 +234,7 @@ export default function QuizPage() {
                 </div>
                 <p
                   className="rounded-lg px-3 py-2 text-xs leading-relaxed"
-                  style={{ backgroundColor: "color-mix(in srgb, var(--primary) 8%, transparent)", color: "var(--foreground)" }}
+                  style={{ backgroundColor: "var(--primary-soft)", color: "var(--foreground)" }}
                 >
                   {r.explanation}
                 </p>
@@ -333,7 +333,7 @@ export default function QuizPage() {
               </div>
               <p
                 className="rounded-lg px-4 py-3 text-sm leading-relaxed"
-                style={{ backgroundColor: "color-mix(in srgb, var(--primary) 8%, transparent)" }}
+                style={{ backgroundColor: "var(--primary-soft)" }}
               >
                 {checkResult.explanation}
               </p>
