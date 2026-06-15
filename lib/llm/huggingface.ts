@@ -5,6 +5,29 @@ const HF_MODEL = "Qwen/Qwen2.5-72B-Instruct";
 // HuggingFace Inference Providers router (OpenAI-compatible)
 const HF_ENDPOINT = "https://router.huggingface.co/v1/chat/completions";
 
+// A single question's JSON (stem, 4 options, explanation, metadata) runs
+// ~280 tokens; budget generously per question plus title/structure overhead.
+// Output tokens dominate latency on a 72B model, so capping this to what we
+// actually need — instead of the old fixed 8192 — is the main guard against
+// the 60s serverless timeout.
+const TOKENS_PER_QUESTION = 320;
+const TOKEN_OVERHEAD = 400;
+const MAX_OUTPUT_TOKENS = 8192; // provider hard cap for this model
+
+function maxTokensFor(questionCount: number): number {
+  return Math.min(MAX_OUTPUT_TOKENS, TOKEN_OVERHEAD + questionCount * TOKENS_PER_QUESTION);
+}
+
+// Abort a single model call before the serverless function's hard timeout so
+// we fail with a clean error (and can surface it) instead of being killed.
+// The route may spend up to ~12s on Gemini topic expansion before calling us,
+// so this leaves headroom under the route's 60s maxDuration (12 + 40 + parse
+// + DB write < 60s).
+const CALL_TIMEOUT_MS = 40_000;
+// Total wall-clock budget for all attempts within this generator, kept under
+// what remains of the route's maxDuration after expansion.
+const GENERATION_BUDGET_MS = 44_000;
+
 // Matches ASCII control characters (0x00–0x1F) without using a literal
 // control char in source. These are invalid raw inside JSON strings.
 const CONTROL_CHARS = new RegExp("[\\u0000-\\u001F]", "g");
@@ -109,22 +132,38 @@ export class HuggingFaceGenerator implements QuizGenerator {
   }
 
   private async callModel(input: GenerationInput): Promise<string> {
-    const response = await fetch(HF_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: HF_MODEL,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserMessage(input) },
-        ],
-        max_tokens: 8192, // provider hard cap for this model
-        temperature: 0.4,
-      }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(HF_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: HF_MODEL,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: buildUserMessage(input) },
+          ],
+          // Scaled to the requested question count rather than the 8192 cap —
+          // fewer output tokens means the call returns well inside the timeout.
+          max_tokens: maxTokensFor(input.questionCount),
+          temperature: 0.4,
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        throw new Error(`HuggingFace request timed out after ${CALL_TIMEOUT_MS / 1000}s`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!response.ok) {
       const err = await response.text().catch(() => response.statusText);
@@ -144,9 +183,16 @@ export class HuggingFaceGenerator implements QuizGenerator {
 
   async generate(input: GenerationInput): Promise<GeneratedQuiz> {
     const MAX_ATTEMPTS = 2;
+    // Keep total work inside the serverless budget: only start a retry if a
+    // full second call could still finish before the function is killed.
+    // (A retry therefore only fires when the first attempt failed quickly.)
+    const DEADLINE = Date.now() + GENERATION_BUDGET_MS;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (attempt > 1 && Date.now() + CALL_TIMEOUT_MS > DEADLINE) {
+        break;
+      }
       try {
         // Vary the seed each retry so a malformed generation isn't repeated.
         const content = await this.callModel({
