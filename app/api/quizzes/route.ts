@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { getGenerator } from "@/lib/llm";
 import { extractText } from "@/lib/extract";
@@ -15,10 +15,7 @@ const generateSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const contentType = req.headers.get("content-type") ?? "";
   let sourceType: string;
@@ -62,7 +59,7 @@ export async function POST(req: NextRequest) {
 
   const quiz = await prisma.quiz.create({
     data: {
-      userId: session.user.id,
+      userId,
       title: generated.title,
       sourceType,
       sourceSummary: sourceText.slice(0, 300),
@@ -86,13 +83,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const quizzes = await prisma.quiz.findMany({
-    where: { userId: session.user.id },
+    where: { userId },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

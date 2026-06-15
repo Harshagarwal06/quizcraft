@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const { id } = await params;
   const quiz = await prisma.quiz.findUnique({
@@ -30,7 +27,7 @@ export async function GET(
     },
   });
 
-  if (!quiz || quiz.userId !== session.user.id) {
+  if (!quiz || quiz.userId !== userId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
 
 function BrandMark() {
   return (
@@ -23,7 +22,6 @@ function BrandMark() {
 
 export default function NavBar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
 
   const links = [
     { href: "/dashboard", label: "Dashboard" },
@@ -56,20 +54,13 @@ export default function NavBar() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
-          {session?.user?.name && (
-            <span className="hidden text-sm text-muted sm:inline">
-              {session.user.name}
-            </span>
-          )}
-          <button
-            onClick={() => signOut({ callbackUrl: "/signin" })}
-            className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-            style={{ color: "var(--muted)" }}
-          >
-            Sign out
-          </button>
-        </div>
+        <Link
+          href="/generate"
+          className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors sm:hidden"
+          style={{ color: "var(--primary)" }}
+        >
+          New
+        </Link>
       </div>
     </header>
   );

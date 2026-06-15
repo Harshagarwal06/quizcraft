@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
@@ -12,14 +12,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const { id: quizId } = await params;
   const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-  if (!quiz || quiz.userId !== session.user.id) {
+  if (!quiz || quiz.userId !== userId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

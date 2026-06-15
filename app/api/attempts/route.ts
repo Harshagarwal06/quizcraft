@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 
@@ -15,10 +15,7 @@ const submitSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const body = await req.json();
   const parsed = submitSchema.safeParse(body);
@@ -30,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   // Verify quiz belongs to user
   const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-  if (!quiz || quiz.userId !== session.user.id) {
+  if (!quiz || quiz.userId !== userId) {
     return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
   }
 
@@ -78,7 +75,7 @@ export async function POST(req: NextRequest) {
   const attempt = await prisma.attempt.create({
     data: {
       quizId,
-      userId: session.user.id,
+      userId,
       completedAt: new Date(),
       score,
       totalQuestions: scoredAnswers.length,
@@ -103,13 +100,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const attempts = await prisma.attempt.findMany({
-    where: { userId: session.user.id, completedAt: { not: null } },
+    where: { userId, completedAt: { not: null } },
     orderBy: { startedAt: "desc" },
     take: 50,
     include: {
