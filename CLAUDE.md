@@ -149,6 +149,10 @@ still describes the sign-in flow; treat this file as the source of truth.)
   HF Inference Providers OpenAI-compatible router; tolerant JSON extraction +
   salvage of truncated output, retries up to 2×). This is what `.env.example`
   ships with.
+- `gemini` / `google` → `GeminiGenerator` (`lib/llm/gemini.ts`; structured JSON
+  output via `responseSchema`, thinking disabled, retries up to 2×). Uses the
+  same `GEMINI_API_KEY` / `GEMINI_MODEL` as the expansion stage, so the whole
+  app can run on a single Gemini key.
 
 To add a provider: implement the `QuizGenerator` interface from `lib/llm/types.ts`,
 reuse `SYSTEM_PROMPT`/`buildUserMessage` from `lib/llm/prompt.ts`, and register
