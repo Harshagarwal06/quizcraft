@@ -61,24 +61,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Source text too short" }, { status: 400 });
   }
 
+  // Trace each stage so the Vercel runtime logs show exactly how far a request
+  // got before failing. Filter the logs by "[quizzes]" / "[expand]" / "[gemini]".
+  const provider = process.env.LLM_PROVIDER ?? "anthropic";
+  console.log(
+    `[quizzes] start sourceType=${sourceType} chars=${sourceText.length} questions=${questionCount} provider=${provider}`
+  );
+
   // For a bare topic ("prompt") — or thin notes/PDF text — first expand the
   // input into a detailed study briefing via Gemini, so the quiz generator has
   // rich, accurate grounding material. Best-effort: falls back to the raw text.
   const THIN_INPUT_CHARS = 500;
   let materialText = sourceText;
   if (sourceType === "prompt" || sourceText.length < THIN_INPUT_CHARS) {
+    console.log("[quizzes] expanding topic via Gemini…");
     const expanded = await expandTopic(sourceText, userPrompt);
-    if (expanded && expanded.length > sourceText.length) materialText = expanded;
+    materialText = expanded && expanded.length > sourceText.length ? expanded : sourceText;
+    console.log(
+      `[quizzes] expansion ${expanded ? `ok (${expanded.length} chars)` : "skipped/failed — using raw input"}`
+    );
   }
 
   try {
     const generator = getGenerator();
+    console.log(`[quizzes] generating with provider=${provider}…`);
     const generated = await generator.generate({
       sourceText: materialText,
       userPrompt,
       questionCount,
       seed: Math.floor(Math.random() * 1_000_000),
     });
+    console.log(`[quizzes] generated ${generated.questions.length} questions, persisting…`);
 
     const quiz = await prisma.quiz.create({
       data: {
@@ -102,11 +115,15 @@ export async function POST(req: NextRequest) {
       select: { id: true, title: true, questionCount: true },
     });
 
+    console.log(`[quizzes] done id=${quiz.id}`);
     return NextResponse.json(quiz, { status: 201 });
   } catch (err) {
-    console.error("[quizzes] generation failed:", err);
+    console.error(`[quizzes] generation failed (provider=${provider}):`, err);
+    // Surface the underlying reason so it's visible in the browser Network tab
+    // and the on-screen error — makes misconfig/quota issues self-diagnosing.
+    const detail = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: "Couldn't generate the quiz. Please try again." },
+      { error: "Couldn't generate the quiz. Please try again.", detail, provider },
       { status: 502 }
     );
   }
