@@ -5,8 +5,9 @@
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-// Cap the call so the second-stage generation still fits the route's maxDuration.
-const TIMEOUT_MS = 20_000;
+// Cap the call so the second-stage generation still fits the route's maxDuration
+// (60s). Expansion + generation run sequentially, so keep this tight.
+const TIMEOUT_MS = 12_000;
 
 /**
  * Instruction for Gemini. The briefing it returns is the ONLY source the exam
@@ -27,7 +28,7 @@ RULES:
 - State only well-established facts. Do NOT speculate, invent figures, or pad with filler.
 - If the topic is broad, prioritize the most exam-relevant, widely-taught material.
 - Plain text only: no markdown, code fences, bullets characters, emojis, or LaTeX. Use short labeled sections and ordinary sentences.
-- Aim for roughly 800-1500 words of substantive content.`;
+- Aim for roughly 500-900 words of dense, substantive content (no filler).`;
 
 function buildRequest(seed: string, userPrompt?: string): string {
   const lines: string[] = [];
@@ -64,7 +65,7 @@ export async function expandTopic(seed: string, userPrompt?: string): Promise<st
         contents: [{ role: "user", parts: [{ text: buildRequest(seed, userPrompt) }] }],
         generationConfig: {
           temperature: 0.4,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 2048,
           // Disable "thinking" (on by default for Gemini 2.5): a factual briefing
           // needs no reasoning tokens, and it keeps the call fast + within budget.
           thinkingConfig: { thinkingBudget: 0 },

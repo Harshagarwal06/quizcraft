@@ -2,9 +2,9 @@ import { generatedQuizSchema, GeneratedQuiz, GenerationInput, QuizGenerator } fr
 import { SYSTEM_PROMPT, buildUserMessage } from "./prompt";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-// Single call ~10-25s; cap it so the route's maxDuration (60s) isn't exceeded
-// even when topic expansion (also Gemini) ran first.
-const TIMEOUT_MS = 45_000;
+// Cap a single generation so the route's maxDuration (60s) isn't exceeded even
+// when topic expansion (also Gemini, up to ~12s) ran first.
+const TIMEOUT_MS = 30_000;
 
 // Gemini structured-output schema (OpenAPI subset) mirroring generatedQuizSchema.
 const RESPONSE_SCHEMA = {
@@ -69,7 +69,7 @@ export class GeminiGenerator implements QuizGenerator {
           contents: [{ role: "user", parts: [{ text: buildUserMessage(input) }] }],
           generationConfig: {
             temperature: 0.4,
-            maxOutputTokens: 8192,
+            maxOutputTokens: 4096,
             responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
             // No reasoning tokens needed for structured generation; keeps it fast.
@@ -113,7 +113,14 @@ export class GeminiGenerator implements QuizGenerator {
         return parsed.data;
       } catch (err) {
         lastError = err;
-        console.warn(`[gemini] generation attempt ${attempt} failed:`, err);
+        const timedOut = err instanceof Error && err.name === "AbortError";
+        console.warn(
+          `[gemini] generation attempt ${attempt} failed${timedOut ? " (timeout)" : ""}:`,
+          err
+        );
+        // A timeout means we're near the route's time budget — retrying would
+        // risk a hard Vercel 60s kill, so stop and fail fast instead.
+        if (timedOut) break;
       }
     }
 
