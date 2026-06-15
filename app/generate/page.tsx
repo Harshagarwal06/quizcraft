@@ -12,7 +12,7 @@ export default function GeneratePage() {
   const [notes, setNotes] = useState("");
   const [prompt, setPrompt] = useState("");
   const [userPrompt, setUserPrompt] = useState("");
-  const [questionCount, setQuestionCount] = useState(10);
+  const [questionCount, setQuestionCount] = useState(8);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -191,14 +191,14 @@ export default function GeneratePage() {
             <input
               type="range"
               min={3}
-              max={30}
+              max={15}
               value={questionCount}
               onChange={(e) => setQuestionCount(Number(e.target.value))}
               className="w-full accent-indigo-500"
             />
             <div className="mt-0.5 flex justify-between text-xs text-muted">
               <span>3</span>
-              <span>30</span>
+              <span>15</span>
             </div>
           </div>
 

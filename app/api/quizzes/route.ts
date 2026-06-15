@@ -1,4 +1,6 @@
 export const dynamic = "force-dynamic";
+// Allow up to 60s — LLM generation can take 30-40s (Vercel default is shorter).
+export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
@@ -11,7 +13,7 @@ const generateSchema = z.object({
   sourceType: z.enum(["notes", "prompt"]),
   content: z.string().min(10).max(100000),
   userPrompt: z.string().max(500).optional(),
-  questionCount: z.number().int().min(3).max(30).default(10),
+  questionCount: z.number().int().min(3).max(15).default(8),
 });
 
 export async function POST(req: NextRequest) {
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     sourceText = await extractText({ type: "pdf", buffer });
     userPrompt = (form.get("userPrompt") as string) || undefined;
-    questionCount = Number(form.get("questionCount")) || 10;
+    questionCount = Math.min(15, Math.max(3, Number(form.get("questionCount")) || 8));
     sourceType = "pdf";
   } else {
     const body = await req.json();
@@ -49,37 +51,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Source text too short" }, { status: 400 });
   }
 
-  const generator = getGenerator();
-  const generated = await generator.generate({
-    sourceText,
-    userPrompt,
-    questionCount,
-    seed: Math.floor(Math.random() * 1_000_000),
-  });
+  try {
+    const generator = getGenerator();
+    const generated = await generator.generate({
+      sourceText,
+      userPrompt,
+      questionCount,
+      seed: Math.floor(Math.random() * 1_000_000),
+    });
 
-  const quiz = await prisma.quiz.create({
-    data: {
-      userId,
-      title: generated.title,
-      sourceType,
-      sourceSummary: sourceText.slice(0, 300),
-      questionCount: generated.questions.length,
-      questions: {
-        create: generated.questions.map((q, i) => ({
-          stem: q.stem,
-          options: JSON.stringify(q.options),
-          correctOption: q.correctOptionId,
-          explanation: q.explanation,
-          difficulty: q.difficulty,
-          topic: q.topic,
-          order: i,
-        })),
+    const quiz = await prisma.quiz.create({
+      data: {
+        userId,
+        title: generated.title,
+        sourceType,
+        sourceSummary: sourceText.slice(0, 300),
+        questionCount: generated.questions.length,
+        questions: {
+          create: generated.questions.map((q, i) => ({
+            stem: q.stem,
+            options: JSON.stringify(q.options),
+            correctOption: q.correctOptionId,
+            explanation: q.explanation,
+            difficulty: q.difficulty,
+            topic: q.topic,
+            order: i,
+          })),
+        },
       },
-    },
-    select: { id: true, title: true, questionCount: true },
-  });
+      select: { id: true, title: true, questionCount: true },
+    });
 
-  return NextResponse.json(quiz, { status: 201 });
+    return NextResponse.json(quiz, { status: 201 });
+  } catch (err) {
+    console.error("[quizzes] generation failed:", err);
+    return NextResponse.json(
+      { error: "Couldn't generate the quiz. Please try again." },
+      { status: 502 }
+    );
+  }
 }
 
 export async function GET() {
