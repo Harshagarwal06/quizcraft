@@ -8,11 +8,13 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
 
-const url = process.env.DATABASE_URL;
-const authToken = process.env.DATABASE_AUTH_TOKEN;
+// Prefer TURSO_* so local dev can keep DATABASE_URL=file:./dev.db while this
+// script targets the remote Turso database.
+const url = process.env.TURSO_DATABASE_URL ?? process.env.DATABASE_URL;
+const authToken = process.env.TURSO_AUTH_TOKEN ?? process.env.DATABASE_AUTH_TOKEN;
 
 if (!url) {
-  console.error("✗ DATABASE_URL is not set");
+  console.error("✗ Set TURSO_DATABASE_URL (and TURSO_AUTH_TOKEN) in .env.local");
   process.exit(1);
 }
 
