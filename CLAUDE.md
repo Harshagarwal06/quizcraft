@@ -62,6 +62,7 @@ lib/
   currentUser.ts   getCurrentUserId() — returns the shared guest user
   auth.ts          NextAuth config (credentials + JWT)
   extract/index.ts extractText() for raw text or PDF buffers (pdf-parse)
+  expand/index.ts  expandTopic() — Gemini topic → study-briefing pre-stage
   llm/
     index.ts       getGenerator() — picks provider from LLM_PROVIDER
     types.ts       Zod schemas + QuizGenerator interface (the contract)
@@ -77,8 +78,18 @@ scripts/apply-migrations.mjs   db:deploy target (prefers TURSO_* env vars)
 ### Quiz generation flow
 
 `generate/page.tsx` → `POST /api/quizzes` → `extractText()` →
-`getGenerator().generate()` → Zod-validate the LLM output → persist `Quiz` +
-`Question[]` → return `{ id }`. The client then navigates to `/quiz/[id]`.
+**optional `expandTopic()`** → `getGenerator().generate()` → Zod-validate the LLM
+output → persist `Quiz` + `Question[]` → return `{ id }`. The client then
+navigates to `/quiz/[id]`.
+
+**Topic-expansion pre-stage** (`lib/expand/index.ts`): when `sourceType` is
+`"prompt"` **or** the extracted text is thin (< `THIN_INPUT_CHARS`, 500), the
+input is first sent to Google **Gemini** to produce a detailed, factual study
+briefing, which becomes the `sourceText` fed to the generator. This grounds the
+quiz in richer material. It is **best-effort with graceful fallback**: if
+`GEMINI_API_KEY` is unset, or Gemini errors/times out (20s cap), the raw input is
+used instead. `Quiz.sourceSummary` always stores the **original** input, not the
+expanded briefing.
 
 ### Playing & scoring flow
 
@@ -153,6 +164,8 @@ See `.env.example`. Key ones:
 - `DATABASE_URL` (+ `DATABASE_AUTH_TOKEN` for Turso)
 - `LLM_PROVIDER` = `hf` | `anthropic`
 - `HF_API_KEY` (HuggingFace) / `ANTHROPIC_API_KEY` (Anthropic)
+- `GEMINI_API_KEY` (optional; enables the topic-expansion pre-stage) +
+  `GEMINI_MODEL` (optional, default `gemini-2.0-flash`)
 - `NEXTAUTH_SECRET` / `AUTH_SECRET`, `NEXTAUTH_URL` / `AUTH_URL`,
   `AUTH_TRUST_HOST` (read even though auth is currently bypassed)
 
