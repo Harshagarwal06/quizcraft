@@ -254,6 +254,14 @@ export default function QuizPage() {
   return (
     <div className="px-4 py-10">
       <div className="mx-auto max-w-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <Link href="/dashboard" className="flex items-center gap-1 text-sm text-muted transition-colors hover:text-foreground">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            Exit
+          </Link>
+        </div>
         <div className="mb-6">
           <div className="mb-2 flex items-center justify-between">
             <p className="max-w-xs truncate text-sm text-muted">{quiz.title}</p>

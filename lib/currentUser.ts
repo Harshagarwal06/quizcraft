@@ -1,18 +1,16 @@
-import { auth } from "./auth";
 import { prisma, ensureSchema } from "./db";
 
 const GUEST_EMAIL = "guest@quizcraft.local";
 
 /**
- * Returns the current user's id. While auth is disabled, falls back to a
- * single shared "guest" account so the app works without signing in.
- * Re-enable real auth by reverting to `(await auth()).user.id` checks.
+ * Returns the current user's id. Auth is currently disabled, so every request
+ * maps to a single shared "guest" account — this keeps behaviour consistent
+ * even for browsers that still hold a stale session cookie from before sign-in
+ * was removed. To re-enable real auth, check `(await auth()).user.id` first and
+ * fall back to the guest user only when there's no session.
  */
 export async function getCurrentUserId(): Promise<string> {
   await ensureSchema();
-
-  const session = await auth();
-  if (session?.user?.id) return session.user.id;
 
   const guest = await prisma.user.upsert({
     where: { email: GUEST_EMAIL },
