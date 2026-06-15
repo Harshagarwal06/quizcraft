@@ -1,55 +1,9 @@
 import { generatedQuizSchema, GeneratedQuiz, GenerationInput, QuizGenerator } from "./types";
+import { SYSTEM_PROMPT, buildUserMessage } from "./prompt";
 
 const HF_MODEL = "Qwen/Qwen2.5-72B-Instruct";
 // HuggingFace Inference Providers router (OpenAI-compatible)
 const HF_ENDPOINT = "https://router.huggingface.co/v1/chat/completions";
-
-const SYSTEM_PROMPT = `You are an expert educator and quiz designer. Your task is to generate high-quality multiple-choice questions (MCQs) from provided study material.
-
-REQUIREMENTS:
-1. DIFFICULTY MIX: Aim for ~30% easy, ~40% medium, ~30% hard questions. Label each question clearly.
-2. COVERAGE: First identify the key topics in the material, then distribute questions across all of them. Include a "topic" field per question.
-3. ANSWER OPTIONS: Always provide exactly 4 options (A, B, C, D). Randomize which letter holds the correct answer. Options must be plausible distractors — not obviously wrong.
-4. EXPLANATIONS: Every question must include a brief explanation of why the correct answer is right. Keep it under 35 words — be concise to keep the response compact.
-5. QUESTION STEMS: Clear, unambiguous, testing understanding not just recall. No "all of the above" or "none of the above."
-6. FRESHNESS: Use the provided seed value to vary phrasing and question angles so repeated generations differ.
-7. FORMAT: Plain text only — no markdown, LaTeX, or special characters. Stems ≤120 chars, option text ≤80 chars each.
-8. TITLE: Generate a descriptive title for the quiz based on the content.
-
-CRITICAL OUTPUT RULES:
-- Respond with a SINGLE valid JSON object and nothing else — no prose, no markdown, no code fences.
-- Do NOT put literal line breaks inside any JSON string value; keep each string on one line.
-- Escape any double quotes inside strings.
-
-The JSON must match this exact shape:
-{
-  "title": "string",
-  "questions": [
-    {
-      "stem": "string",
-      "options": [
-        { "id": "A", "text": "string" },
-        { "id": "B", "text": "string" },
-        { "id": "C", "text": "string" },
-        { "id": "D", "text": "string" }
-      ],
-      "correctOptionId": "A" | "B" | "C" | "D",
-      "explanation": "string",
-      "difficulty": "easy" | "medium" | "hard",
-      "topic": "string"
-    }
-  ]
-}`;
-
-function buildUserMessage(input: GenerationInput): string {
-  const lines: string[] = [];
-  if (input.userPrompt) lines.push(`FOCUS: ${input.userPrompt}\n`);
-  lines.push(`SEED: ${input.seed} (use this to vary your output)\n`);
-  lines.push(`Generate exactly ${input.questionCount} MCQs from the following material:\n`);
-  lines.push("---");
-  lines.push(input.sourceText.slice(0, 60000));
-  return lines.join("\n");
-}
 
 // Matches ASCII control characters (0x00–0x1F) without using a literal
 // control char in source. These are invalid raw inside JSON strings.
