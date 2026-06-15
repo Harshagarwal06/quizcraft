@@ -1,5 +1,5 @@
 import { auth } from "./auth";
-import { prisma } from "./db";
+import { prisma, ensureSchema } from "./db";
 
 const GUEST_EMAIL = "guest@quizcraft.local";
 
@@ -9,6 +9,8 @@ const GUEST_EMAIL = "guest@quizcraft.local";
  * Re-enable real auth by reverting to `(await auth()).user.id` checks.
  */
 export async function getCurrentUserId(): Promise<string> {
+  await ensureSchema();
+
   const session = await auth();
   if (session?.user?.id) return session.user.id;
 

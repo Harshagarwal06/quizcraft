@@ -17,7 +17,16 @@ const generateSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const userId = await getCurrentUserId();
+  let userId: string;
+  try {
+    userId = await getCurrentUserId();
+  } catch (err) {
+    console.error("[quizzes] database unavailable:", err);
+    return NextResponse.json(
+      { error: "Database is not set up. Run the Turso migration (npm run db:deploy)." },
+      { status: 503 }
+    );
+  }
 
   const contentType = req.headers.get("content-type") ?? "";
   let sourceType: string;
