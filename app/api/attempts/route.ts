@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   // Fetch correct answers from server — never trust client
   const questions = await prisma.question.findMany({
     where: { quizId },
-    select: { id: true, correctOption: true, explanation: true, stem: true, options: true, difficulty: true, topic: true },
+    select: { id: true, correctOption: true, explanation: true, stem: true, options: true, difficulty: true, topic: true, verdict: true },
   });
 
   type ScoredAnswer = {
@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
   for (const a of answers) {
     const q = questionMap.get(a.questionId);
     if (!q) continue;
+    // Never score a known-bad question, even if the client submits one.
+    if (q.verdict === "flagged") continue;
     scoredAnswers.push({
       questionId: a.questionId,
       selectedOption: a.selectedOption,

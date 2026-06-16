@@ -47,6 +47,11 @@ export const SCHEMA_STATEMENTS: string[] = [
     "sourceSummary" TEXT,
     "questionCount" INTEGER NOT NULL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "groundingText" TEXT,
+    "verificationStatus" TEXT NOT NULL DEFAULT 'pending',
+    "verifiedAt" DATETIME,
+    "verifierModel" TEXT,
+    "verificationSummary" TEXT,
     CONSTRAINT "Quiz_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS "Question" (
@@ -59,6 +64,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     "difficulty" TEXT NOT NULL,
     "topic" TEXT NOT NULL,
     "order" INTEGER NOT NULL,
+    "verdict" TEXT,
+    "verificationDetail" TEXT,
     CONSTRAINT "Question_quizId_fkey" FOREIGN KEY ("quizId") REFERENCES "Quiz" ("id") ON DELETE CASCADE ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS "Attempt" (
@@ -87,4 +94,18 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "Session_sessionToken_key" ON "Session"("sessionToken")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_token_key" ON "VerificationToken"("token")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_identifier_token_key" ON "VerificationToken"("identifier", "token")`,
+];
+
+// Columns added after the initial tables shipped. SQLite has no
+// "ADD COLUMN IF NOT EXISTS", so these run individually and the "duplicate
+// column name" error is swallowed (see ensureSchema in lib/db.ts). This lets an
+// already-provisioned DB (e.g. a live Turso instance) self-upgrade on first use.
+export const ADDITIVE_COLUMNS: string[] = [
+  `ALTER TABLE "Quiz" ADD COLUMN "groundingText" TEXT`,
+  `ALTER TABLE "Quiz" ADD COLUMN "verificationStatus" TEXT NOT NULL DEFAULT 'pending'`,
+  `ALTER TABLE "Quiz" ADD COLUMN "verifiedAt" DATETIME`,
+  `ALTER TABLE "Quiz" ADD COLUMN "verifierModel" TEXT`,
+  `ALTER TABLE "Quiz" ADD COLUMN "verificationSummary" TEXT`,
+  `ALTER TABLE "Question" ADD COLUMN "verdict" TEXT`,
+  `ALTER TABLE "Question" ADD COLUMN "verificationDetail" TEXT`,
 ];

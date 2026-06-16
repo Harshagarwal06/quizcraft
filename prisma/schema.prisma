@@ -70,6 +70,13 @@ model Quiz {
   questionCount Int
   createdAt     DateTime @default(now())
 
+  // Quality-engine (verification) fields
+  groundingText       String? // the material the generator saw (post-expansion), for the verifier
+  verificationStatus  String  @default("pending") // pending | verifying | verified | skipped | failed
+  verifiedAt          DateTime?
+  verifierModel       String? // e.g. "gemini-2.5-flash" — which model audited
+  verificationSummary String? // JSON: { total, passedInitial, failedInitial, repaired, flagged }
+
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   questions Question[]
   attempts  Attempt[]
@@ -85,6 +92,10 @@ model Question {
   difficulty    String  // "easy" | "medium" | "hard"
   topic         String
   order         Int
+
+  // Quality-engine (verification) fields
+  verdict            String? // null (unverified) | "pass" | "repaired" | "flagged"
+  verificationDetail String? // JSON: { grounded, answerSupported, uniqueAnswer, distractorsValid, reasons[], initialVerdict, suggestedCorrectOptionId? }
 
   quiz          Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
   answerRecords AnswerRecord[]

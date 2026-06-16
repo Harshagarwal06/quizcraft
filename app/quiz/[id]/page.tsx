@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Option = { id: "A" | "B" | "C" | "D"; text: string };
+type Verdict = "pass" | "repaired" | null;
 type Question = {
   id: string;
   stem: string;
@@ -12,8 +13,24 @@ type Question = {
   difficulty: "easy" | "medium" | "hard";
   topic: string;
   order: number;
+  verdict: Verdict;
 };
-type Quiz = { id: string; title: string; questionCount: number; questions: Question[] };
+type VerificationSummary = {
+  total: number;
+  passedInitial: number;
+  failedInitial: number;
+  repaired: number;
+  flagged: number;
+};
+type Quiz = {
+  id: string;
+  title: string;
+  questionCount: number;
+  verificationStatus: "pending" | "verifying" | "verified" | "skipped" | "failed";
+  verifierModel: string | null;
+  verificationSummary: VerificationSummary | null;
+  questions: Question[];
+};
 
 type CheckResult = {
   isCorrect: boolean;
@@ -42,13 +59,17 @@ type FinalResult = {
   topic: string;
 };
 
-type Phase = "loading" | "playing" | "results" | "error";
+type Phase = "loading" | "verifying" | "playing" | "results" | "error";
 
 const difficultyColor: Record<string, string> = {
   easy: "bg-emerald-100 text-emerald-700",
   medium: "bg-amber-100 text-amber-700",
   hard: "bg-rose-100 text-rose-700",
 };
+
+const TERMINAL = new Set(["verified", "skipped", "failed"]);
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLLS = 40; // ~80s safety cap, then play with whatever we have
 
 export default function QuizPage() {
   const { id } = useParams<{ id: string }>();
@@ -64,16 +85,59 @@ export default function QuizPage() {
   const [finalResults, setFinalResults] = useState<FinalResult[]>([]);
   const [finalScore, setFinalScore] = useState(0);
   const questionStartMs = useRef<number>(Date.now());
+  const verifyTriggered = useRef(false);
 
   useEffect(() => {
-    fetch(`/api/quizzes/${id}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: Quiz) => {
+    let cancelled = false;
+    let polls = 0;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const triggerVerify = () => {
+      if (verifyTriggered.current) return;
+      verifyTriggered.current = true;
+      // Fire-and-forget; the endpoint is idempotent (server-side lock).
+      fetch(`/api/quizzes/${id}/verify`, { method: "POST" }).catch(() => {});
+    };
+
+    const startPlaying = () => {
+      setPhase("playing");
+      questionStartMs.current = Date.now();
+    };
+
+    const load = async () => {
+      try {
+        const r = await fetch(`/api/quizzes/${id}`);
+        if (!r.ok) throw new Error("not found");
+        const data: Quiz = await r.json();
+        if (cancelled) return;
         setQuiz(data);
-        setPhase("playing");
-        questionStartMs.current = Date.now();
-      })
-      .catch(() => setPhase("error"));
+
+        if (TERMINAL.has(data.verificationStatus)) {
+          startPlaying();
+          return;
+        }
+
+        // Still pending/verifying: kick off verification once, then poll.
+        if (data.verificationStatus === "pending" || data.verificationStatus === "failed") {
+          triggerVerify();
+        }
+        setPhase("verifying");
+
+        if (++polls >= MAX_POLLS) {
+          startPlaying(); // safety valve — never trap the user on the spinner
+          return;
+        }
+        timer = setTimeout(load, POLL_INTERVAL_MS);
+      } catch {
+        if (!cancelled) setPhase("error");
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [id]);
 
   async function handleSelect(optionId: string) {
@@ -145,6 +209,30 @@ export default function QuizPage() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="animate-pulse text-muted">Loading quiz…</p>
+      </div>
+    );
+  }
+
+  if (phase === "verifying") {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="card max-w-md p-8 text-center">
+          <div
+            className="mx-auto mb-5 grid h-14 w-14 animate-pulse place-items-center rounded-2xl text-white"
+            style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 12l2 2 4-4" />
+              <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.66 0 3.22.45 4.56 1.24" />
+            </svg>
+          </div>
+          <h1 className="text-lg font-bold tracking-tight">Verifying quiz quality…</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            An independent AI model is checking every question against your source —
+            confirming the answers are correct and fixing or removing any that aren&apos;t.
+          </p>
+          <p className="mt-4 animate-pulse text-xs text-muted">This usually takes ~20–40 seconds.</p>
+        </div>
       </div>
     );
   }
@@ -275,6 +363,26 @@ export default function QuizPage() {
               style={{ width: `${progress}%`, backgroundImage: "linear-gradient(90deg, #6366f1, #8b5cf6)" }}
             />
           </div>
+
+          {quiz.verificationStatus === "verified" && quiz.verificationSummary && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-600">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Quality-checked
+              </span>
+              {quiz.verifierModel && <span>by {quiz.verifierModel}</span>}
+              <span>·</span>
+              <span>{quiz.verificationSummary.total} checked</span>
+              {quiz.verificationSummary.repaired > 0 && (
+                <span>· {quiz.verificationSummary.repaired} repaired</span>
+              )}
+              {quiz.verificationSummary.flagged > 0 && (
+                <span>· {quiz.verificationSummary.flagged} removed</span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="card p-6">
@@ -283,6 +391,23 @@ export default function QuizPage() {
               {q.difficulty}
             </span>
             <span className="text-xs text-muted">{q.topic}</span>
+            {q.verdict === "pass" && (
+              <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Verified
+              </span>
+            )}
+            {q.verdict === "repaired" && (
+              <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 4v6h-6M1 20v-6h6" />
+                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                </svg>
+                Repaired
+              </span>
+            )}
           </div>
 
           <p className="mb-5 text-base font-semibold leading-relaxed">{q.stem}</p>

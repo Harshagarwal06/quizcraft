@@ -21,7 +21,9 @@ export async function GET(
           difficulty: true,
           topic: true,
           order: true,
-          // correctOption and explanation are intentionally excluded from play payload
+          verdict: true,
+          // correctOption, explanation and verificationDetail are intentionally
+          // excluded — verificationDetail would reveal the correct answer.
         },
       },
     },
@@ -31,12 +33,33 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Once verified, never serve a known-bad ("flagged") question to the learner.
+  const playable = quiz.questions.filter((q) => q.verdict !== "flagged");
+
+  let summary: unknown = null;
+  if (quiz.verificationSummary) {
+    try {
+      summary = JSON.parse(quiz.verificationSummary);
+    } catch {
+      summary = null;
+    }
+  }
+
   return NextResponse.json({
     id: quiz.id,
     title: quiz.title,
-    questionCount: quiz.questionCount,
-    questions: quiz.questions.map((q) => ({
-      ...q,
+    questionCount: playable.length,
+    verificationStatus: quiz.verificationStatus,
+    verifierModel: quiz.verifierModel,
+    verificationSummary: summary,
+    questions: playable.map((q) => ({
+      id: q.id,
+      stem: q.stem,
+      difficulty: q.difficulty,
+      topic: q.topic,
+      order: q.order,
+      // Only the trust-badge label leaves the server, never the reasons.
+      verdict: q.verdict, // null (unverified) | "pass" | "repaired"
       options: JSON.parse(q.options),
     })),
   });

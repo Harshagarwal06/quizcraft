@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { createClient } from "@libsql/client";
-import { SCHEMA_STATEMENTS } from "./schema";
+import { SCHEMA_STATEMENTS, ADDITIVE_COLUMNS } from "./schema";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient;
@@ -40,6 +40,18 @@ export function ensureSchema(): Promise<void> {
         // One round-trip for all DDL instead of N serial executes — on remote
         // (Turso) the per-statement network latency otherwise dominates cold starts.
         await client.batch(SCHEMA_STATEMENTS, "write");
+
+        // Additive columns for already-provisioned DBs. SQLite lacks
+        // "ADD COLUMN IF NOT EXISTS", so run each on its own and ignore the
+        // expected "duplicate column name" error when the column already exists.
+        for (const stmt of ADDITIVE_COLUMNS) {
+          try {
+            await client.execute(stmt);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!/duplicate column name/i.test(msg)) throw err;
+          }
+        }
       } finally {
         client.close();
       }

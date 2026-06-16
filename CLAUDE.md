@@ -52,6 +52,7 @@ app/
     quizzes/route.ts             POST generate quiz, GET list
     quizzes/[id]/route.ts        GET quiz for play (answer key stripped)
     quizzes/[id]/check/route.ts  POST check a single answer
+    quizzes/[id]/verify/route.ts POST verify+repair quiz (Quality Engine)
     attempts/route.ts            POST submit attempt (server-scored), GET history
     dashboard/route.ts           GET aggregated stats
     auth/[...nextauth]/route.ts  NextAuth handlers (unused while auth is off)
@@ -70,6 +71,12 @@ lib/
     huggingface.ts HuggingFaceGenerator (Qwen2.5-72B, robust JSON salvage)
     gemini.ts      GeminiGenerator (structured JSON via responseSchema)
     shuffle.ts     shuffleQuizOptions() — randomizes correct-answer position
+    client.ts      low-level callHFChat/callGeminiJSON + extractJsonLoose
+    verify/        Quality Engine: cross-model verifier + repair loop
+      index.ts     selectVerifier() (cross-model) + verifyQuestions()
+      prompt.ts    VERIFIER_SYSTEM_PROMPT + buildVerifierMessage()
+      types.ts     verdict Zod schemas + Gemini response schema
+      repair.ts    verifyAndRepair() — fix wrong keys / regen / flag
 prisma/
   schema.prisma    data model (provider = sqlite)
   migrations/      SQL migrations; applied to Turso via scripts/apply-migrations.mjs
@@ -99,6 +106,29 @@ expanded briefing.
 Final submission goes to `POST /api/attempts`, which **re-fetches the correct
 answers server-side and scores there** — never trust client-supplied
 correctness. The dashboard reads aggregates from `GET /api/dashboard`.
+
+### Quality Engine (verification + repair) — async, cross-model
+
+After generation a quiz is persisted with `verificationStatus="pending"` and the
+generator's input saved as `Quiz.groundingText`. Verification runs in a **separate
+request** (its own 60s budget — generation is already near its limit), triggered
+client-side by the player: `POST /api/quizzes/[id]/verify` (idempotent — an
+`updateMany` lock moves `pending|failed → verifying`; double-fires get `202`).
+
+The verifier is an **independent cross-model judge** (`selectVerifier()` picks the
+provider opposite `LLM_PROVIDER`; override with `VERIFIER_PROVIDER`; falls back to
+same-model self-check, or `skipped` if no key / no grounding text). It audits each
+question against `groundingText` (grounded? answer correct & unique? distractors
+wrong?) and `verifyAndRepair()` runs **one bounded repair round**: wrong-but-sound
+answer keys are relabelled in place (`verdict="repaired"`); ungrounded/ambiguous
+questions are regenerated + re-verified (swap in if they pass, else
+`verdict="flagged"`); good ones are `pass`. Results: per-`Question` `verdict` +
+`verificationDetail` (JSON), and `Quiz.verificationSummary`/`verifierModel`/
+`verifiedAt`, status `verified`.
+
+**Never leak the answer key:** the play `GET` returns only the `verdict` badge
+(pass/repaired) — never `verificationDetail` (it contains the correct option) —
+and **excludes `flagged` questions** from both play and scoring.
 
 ## Conventions & patterns
 
@@ -167,6 +197,8 @@ See `.env.example`. Key ones:
 
 - `DATABASE_URL` (+ `DATABASE_AUTH_TOKEN` for Turso)
 - `LLM_PROVIDER` = `hf` | `gemini`
+- `VERIFIER_PROVIDER` (optional) = `hf` | `gemini` — Quality Engine judge;
+  defaults to the provider opposite `LLM_PROVIDER` (cross-model)
 - `HF_API_KEY` (HuggingFace) / `GEMINI_API_KEY` + `GEMINI_MODEL` (Gemini)
 - `GEMINI_API_KEY` (optional; enables the topic-expansion pre-stage) +
   `GEMINI_MODEL` (optional, default `gemini-2.5-flash`)

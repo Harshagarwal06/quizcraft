@@ -12,6 +12,7 @@
 - **Progress dashboard** — accuracy over time, performance by difficulty, and per-topic mastery (charts via Recharts).
 - **Accounts & persistence** — sign up, and your quizzes and attempts are saved across sessions.
 - **Provider-agnostic AI** — swap the model with one env var. Ships with **HuggingFace Qwen2.5-72B-Instruct** and **Google Gemini** implementations.
+- **Quality Engine** — an **independent cross-model verifier** audits every generated question against its source (is the stem grounded? is the marked answer correct and unique? are the distractors wrong?) and a bounded repair loop fixes wrong answer keys, regenerates hallucinated questions, or removes the unfixable ones — so a learner is never scored on a known-bad question. Runs asynchronously with per-question trust badges.
 - **Secure by design** — answer keys are never sent to the browser during play; scoring happens server-side.
 - **Responsive + dark mode** — polished UI that adapts to mobile and your system theme.
 

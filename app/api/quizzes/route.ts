@@ -102,6 +102,9 @@ export async function POST(req: NextRequest) {
         title: generated.title,
         sourceType,
         sourceSummary: sourceText.slice(0, 300),
+        // The exact material the generator saw (post-expansion) — the verifier
+        // must audit against this. verificationStatus defaults to "pending".
+        groundingText: materialText.slice(0, 60000),
         questionCount: generated.questions.length,
         questions: {
           create: generated.questions.map((q, i) => ({
