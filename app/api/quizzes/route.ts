@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { getGenerator } from "@/lib/llm";
+import { shuffleQuizOptions } from "@/lib/llm/shuffle";
 import { expandTopic } from "@/lib/expand";
 import { extractText } from "@/lib/extract";
 import { z } from "zod";
@@ -85,12 +86,14 @@ export async function POST(req: NextRequest) {
   try {
     const generator = getGenerator();
     console.log(`[quizzes] generating with provider=${provider}…`);
-    const generated = await generator.generate({
-      sourceText: materialText,
-      userPrompt,
-      questionCount,
-      seed: Math.floor(Math.random() * 1_000_000),
-    });
+    const generated = shuffleQuizOptions(
+      await generator.generate({
+        sourceText: materialText,
+        userPrompt,
+        questionCount,
+        seed: Math.floor(Math.random() * 1_000_000),
+      })
+    );
     console.log(`[quizzes] generated ${generated.questions.length} questions, persisting…`);
 
     const quiz = await prisma.quiz.create({
