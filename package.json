@@ -11,7 +11,6 @@
     "db:deploy": "node scripts/apply-migrations.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.104.1",
     "@auth/prisma-adapter": "^2.11.2",
     "@libsql/client": "^0.17.3",
     "@prisma/adapter-libsql": "^7.8.0",

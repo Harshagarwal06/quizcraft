@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   // Trace each stage so the Vercel runtime logs show exactly how far a request
   // got before failing. Filter the logs by "[quizzes]" / "[expand]" / "[gemini]".
-  const provider = process.env.LLM_PROVIDER ?? "anthropic";
+  const provider = process.env.LLM_PROVIDER ?? "hf";
   console.log(
     `[quizzes] start sourceType=${sourceType} chars=${sourceText.length} questions=${questionCount} provider=${provider}`
   );

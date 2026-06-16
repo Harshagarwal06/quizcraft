@@ -67,8 +67,9 @@ lib/
     index.ts       getGenerator() — picks provider from LLM_PROVIDER
     types.ts       Zod schemas + QuizGenerator interface (the contract)
     prompt.ts      shared SYSTEM_PROMPT + buildUserMessage()
-    anthropic.ts   AnthropicGenerator (json_schema structured output)
     huggingface.ts HuggingFaceGenerator (Qwen2.5-72B, robust JSON salvage)
+    gemini.ts      GeminiGenerator (structured JSON via responseSchema)
+    shuffle.ts     shuffleQuizOptions() — randomizes correct-answer position
 prisma/
   schema.prisma    data model (provider = sqlite)
   migrations/      SQL migrations; applied to Turso via scripts/apply-migrations.mjs
@@ -143,12 +144,10 @@ still describes the sign-in flow; treat this file as the source of truth.)
 
 `getGenerator()` selects an implementation from `LLM_PROVIDER`:
 
-- `anthropic` → `AnthropicGenerator` (model `claude-opus-4-8`, structured
-  `json_schema` output). **Code default** when `LLM_PROVIDER` is unset.
 - `hf` / `huggingface` → `HuggingFaceGenerator` (Qwen2.5-72B-Instruct via the
   HF Inference Providers OpenAI-compatible router; tolerant JSON extraction +
   salvage of truncated output, retries up to 2×). This is what `.env.example`
-  ships with.
+  ships with, and the **code default** when `LLM_PROVIDER` is unset.
 - `gemini` / `google` → `GeminiGenerator` (`lib/llm/gemini.ts`; structured JSON
   output via `responseSchema`, thinking disabled, retries up to 2×). Uses the
   same `GEMINI_API_KEY` / `GEMINI_MODEL` as the expansion stage, so the whole
@@ -158,16 +157,17 @@ To add a provider: implement the `QuizGenerator` interface from `lib/llm/types.t
 reuse `SYSTEM_PROMPT`/`buildUserMessage` from `lib/llm/prompt.ts`, and register
 it in `lib/llm/index.ts`. Keep the output conforming to `generatedQuizSchema`.
 
-When touching Anthropic/LLM code, follow the repo's LLM guidance and use the
-latest capable Claude models (default `claude-opus-4-8`).
+The generated quiz is passed through `shuffleQuizOptions()` (`lib/llm/shuffle.ts`)
+in the quizzes route before persisting, so the correct answer's position is
+randomized regardless of provider/model bias.
 
 ## Environment variables
 
 See `.env.example`. Key ones:
 
 - `DATABASE_URL` (+ `DATABASE_AUTH_TOKEN` for Turso)
-- `LLM_PROVIDER` = `hf` | `anthropic`
-- `HF_API_KEY` (HuggingFace) / `ANTHROPIC_API_KEY` (Anthropic)
+- `LLM_PROVIDER` = `hf` | `gemini`
+- `HF_API_KEY` (HuggingFace) / `GEMINI_API_KEY` + `GEMINI_MODEL` (Gemini)
 - `GEMINI_API_KEY` (optional; enables the topic-expansion pre-stage) +
   `GEMINI_MODEL` (optional, default `gemini-2.5-flash`)
 - `NEXTAUTH_SECRET` / `AUTH_SECRET`, `NEXTAUTH_URL` / `AUTH_URL`,

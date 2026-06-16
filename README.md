@@ -11,7 +11,7 @@
 - **Interactive player** — answer one question at a time with instant feedback and explanations, a progress bar, and a final score.
 - **Progress dashboard** — accuracy over time, performance by difficulty, and per-topic mastery (charts via Recharts).
 - **Accounts & persistence** — sign up, and your quizzes and attempts are saved across sessions.
-- **Provider-agnostic AI** — swap the model with one env var. Ships with **HuggingFace Qwen2.5-72B-Instruct** and **Anthropic Claude** implementations.
+- **Provider-agnostic AI** — swap the model with one env var. Ships with **HuggingFace Qwen2.5-72B-Instruct** and **Google Gemini** implementations.
 - **Secure by design** — answer keys are never sent to the browser during play; scoring happens server-side.
 - **Responsive + dark mode** — polished UI that adapts to mobile and your system theme.
 
@@ -23,7 +23,7 @@
 | Styling | Tailwind CSS v4 |
 | Database | Prisma 7 ORM + SQLite (swap for Postgres in prod) |
 | Auth | NextAuth (Auth.js) v5 — credentials + JWT sessions |
-| AI | HuggingFace (Qwen2.5-72B) / Anthropic Claude, behind a provider interface |
+| AI | HuggingFace (Qwen2.5-72B) / Google Gemini, behind a provider interface |
 | Charts | Recharts |
 | Validation | Zod (request bodies **and** LLM output) |
 
@@ -51,9 +51,9 @@ AUTH_URL="http://localhost:3001"
 AUTH_TRUST_HOST="true"
 
 # Choose your AI provider
-LLM_PROVIDER="hf"               # "hf" | "anthropic"
+LLM_PROVIDER="hf"               # "hf" | "gemini"
 HF_API_KEY="hf_..."             # if using HuggingFace
-ANTHROPIC_API_KEY="sk-ant-..."  # if using Anthropic
+GEMINI_API_KEY="..."            # if using Gemini (also enables topic expansion)
 ```
 
 ### 3. Set up the database
@@ -81,7 +81,7 @@ app/
 ├─ api/               route handlers (quizzes, attempts, auth, dashboard)
 └─ components/        shared UI (NavBar)
 lib/
-├─ llm/               provider-agnostic generation layer (hf, anthropic)
+├─ llm/               provider-agnostic generation layer (hf, gemini)
 ├─ extract/           PDF text extraction
 ├─ auth.ts            NextAuth config
 └─ db.ts              Prisma client singleton
@@ -94,7 +94,7 @@ prisma/
 Set `LLM_PROVIDER` in `.env.local`:
 
 - `hf` → HuggingFace Qwen2.5-72B-Instruct (via the Inference Providers router)
-- `anthropic` → Anthropic Claude
+- `gemini` → Google Gemini (structured JSON output)
 
 Add your own by implementing the `QuizGenerator` interface in `lib/llm/` and registering it in `lib/llm/index.ts`.
 
