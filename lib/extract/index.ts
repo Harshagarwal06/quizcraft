@@ -1,3 +1,4 @@
+import "./polyfills";
 // @ts-expect-error - CJS module
 import pdfParse from "pdf-parse";
 
