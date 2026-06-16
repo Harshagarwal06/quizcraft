@@ -1,6 +1,6 @@
 import "./polyfills";
-// @ts-expect-error - CJS module
-import pdfParse from "pdf-parse";
+import pdfParseModule from "pdf-parse";
+const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 
 export async function extractText(
   source: { type: "text"; content: string } | { type: "pdf"; buffer: Buffer }
