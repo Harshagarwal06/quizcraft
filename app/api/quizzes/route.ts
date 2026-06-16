@@ -5,7 +5,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
-import { getGenerator } from "@/lib/llm";
+import { generateWithFallback } from "@/lib/llm";
 import { shuffleQuizOptions } from "@/lib/llm/shuffle";
 import { expandTopic } from "@/lib/expand";
 import { extractText } from "@/lib/extract";
@@ -19,6 +19,7 @@ const generateSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const reqStart = Date.now();
   let userId: string;
   try {
     userId = await getCurrentUserId();
@@ -84,16 +85,23 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const generator = getGenerator();
     console.log(`[quizzes] generating with provider=${provider}…`);
-    const generated = shuffleQuizOptions(
-      await generator.generate({
+    // Leave ~4s headroom under the 60s maxDuration for the DB write.
+    const deadline = reqStart + 56_000;
+    const { quiz: generatedRaw, provider: usedProvider } = await generateWithFallback(
+      {
         sourceText: materialText,
         userPrompt,
         questionCount,
         seed: Math.floor(Math.random() * 1_000_000),
-      })
+      },
+      provider,
+      deadline
     );
+    const generated = shuffleQuizOptions(generatedRaw);
+    if (usedProvider !== provider) {
+      console.log(`[quizzes] primary "${provider}" unavailable — used fallback "${usedProvider}"`);
+    }
     console.log(`[quizzes] generated ${generated.questions.length} questions, persisting…`);
 
     const quiz = await prisma.quiz.create({
