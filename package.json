@@ -7,6 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "eval": "tsx eval/run.ts",
+    "eval:live": "tsx eval/run.ts --live",
     "postinstall": "prisma generate",
     "db:deploy": "node scripts/apply-migrations.mjs"
   },
@@ -36,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }

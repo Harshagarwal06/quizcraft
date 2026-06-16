@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "cell-cycle",
+      "title": "Cell Cycle Checkpoints",
+      "domain": "biology",
+      "split": "benchmark",
+      "questionCount": 5,
+      "seed": 1101,
+      "sourceText": "The cell cycle has ordered stages: G1, S, G2, and M phase. During S phase, DNA is replicated. The G1 checkpoint checks whether the cell has adequate nutrients, growth signals, and undamaged DNA before DNA synthesis begins. The G2 checkpoint confirms DNA replication is complete and checks for DNA damage before mitosis. The spindle checkpoint occurs during mitosis and delays chromosome separation until chromosomes are properly attached to spindle fibers. Cyclin-dependent kinases, or CDKs, are activated by cyclins and help drive transitions between cell-cycle stages. If severe DNA damage is detected, checkpoint signaling can pause the cycle so repair can occur."
+    },
+    {
+      "id": "glucose-regulation",
+      "title": "Blood Glucose Regulation",
+      "domain": "physiology",
+      "split": "benchmark",
+      "questionCount": 5,
+      "seed": 1202,
+      "sourceText": "After a carbohydrate-rich meal, blood glucose rises. Beta cells in the pancreas release insulin in response. Insulin promotes glucose uptake by muscle and fat cells and supports glycogen storage in the liver. When blood glucose falls between meals, alpha cells in the pancreas release glucagon. Glucagon signals the liver to break down glycogen and release glucose into the bloodstream. Type 1 diabetes results from autoimmune destruction of pancreatic beta cells, causing little or no insulin production. Type 2 diabetes is characterized by insulin resistance, often with a gradual decline in beta-cell function."
+    },
+    {
+      "id": "sql-indexes",
+      "title": "SQL Index Fundamentals",
+      "domain": "computer-science",
+      "split": "benchmark",
+      "questionCount": 5,
+      "seed": 1303,
+      "sourceText": "A database index is an auxiliary data structure that helps locate rows without scanning every row in a table. B-tree indexes are commonly used for equality lookups and range queries. Indexes can speed up SELECT queries, but they add storage overhead and can slow INSERT, UPDATE, and DELETE operations because the index must also be maintained. A composite index uses more than one column, and its column order matters for query planning. A covering index includes all columns needed by a query, allowing the database to answer the query from the index alone. Indexes are least helpful on very small tables or columns with very low selectivity."
+    },
+    {
+      "id": "photosynthesis",
+      "title": "Photosynthesis Overview",
+      "domain": "biology",
+      "split": "heldout",
+      "questionCount": 5,
+      "seed": 1404,
+      "sourceText": "Photosynthesis converts light energy into chemical energy stored in sugars. In plants, the light-dependent reactions occur in thylakoid membranes and produce ATP and NADPH while releasing oxygen from split water molecules. The Calvin cycle occurs in the stroma of chloroplasts. It uses carbon dioxide, ATP, and NADPH to build sugar molecules. Chlorophyll absorbs light most strongly in the blue and red parts of the visible spectrum and reflects much of the green light. Stomata are pores that allow carbon dioxide to enter leaves, but opening them can also increase water loss."
+    },
+    {
+      "id": "clinical-triage",
+      "title": "Emergency Triage Basics",
+      "domain": "medicine",
+      "split": "heldout",
+      "questionCount": 5,
+      "seed": 1505,
+      "sourceText": "Emergency triage sorts patients by urgency when resources are limited. Airway, breathing, and circulation are assessed early because immediate threats in these areas can be fatal. A patient with severe respiratory distress or signs of shock needs rapid attention. Stable patients with minor injuries can usually wait longer. Triage is not a final diagnosis; it is a prioritization process that can change as new information appears. Clear communication and frequent reassessment reduce the risk of missing a patient whose condition is worsening."
+    },
+    {
+      "id": "http-caching",
+      "title": "HTTP Cache Headers",
+      "domain": "web-engineering",
+      "split": "heldout",
+      "questionCount": 5,
+      "seed": 1606,
+      "sourceText": "HTTP caching stores responses so later requests can be served faster or with less network traffic. Cache-Control: max-age tells a cache how long a response can be considered fresh. no-store instructs caches not to store the response at all. ETag is a validator that lets a client ask whether a cached representation is still current. If the representation has not changed, the server can return 304 Not Modified instead of sending the full body. Vary tells caches which request headers affect the response, such as Accept-Encoding. Incorrect caching of personalized responses can expose private data."
+    }
+  ]
+}

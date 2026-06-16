@@ -71,6 +71,10 @@ const TERMINAL = new Set(["verified", "skipped", "failed"]);
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 40; // ~80s safety cap, then play with whatever we have
 
+function currentTimeMs() {
+  return Date.now();
+}
+
 export default function QuizPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -84,7 +88,7 @@ export default function QuizPage() {
   const [answers, setAnswers] = useState<AnswerEntry[]>([]);
   const [finalResults, setFinalResults] = useState<FinalResult[]>([]);
   const [finalScore, setFinalScore] = useState(0);
-  const questionStartMs = useRef<number>(Date.now());
+  const questionStartMs = useRef<number>(0);
   const verifyTriggered = useRef(false);
 
   useEffect(() => {
@@ -101,7 +105,7 @@ export default function QuizPage() {
 
     const startPlaying = () => {
       setPhase("playing");
-      questionStartMs.current = Date.now();
+      questionStartMs.current = currentTimeMs();
     };
 
     const load = async () => {
@@ -144,7 +148,7 @@ export default function QuizPage() {
     if (!quiz || checkResult || checking) return;
     const q = quiz.questions[currentIdx];
     setChecking(true);
-    const timeMs = Date.now() - questionStartMs.current;
+    const timeMs = currentTimeMs() - questionStartMs.current;
 
     const res = await fetch(`/api/quizzes/${id}/check`, {
       method: "POST",
@@ -199,7 +203,7 @@ export default function QuizPage() {
     if (nextIdx < quiz.questions.length) {
       setCurrentIdx(nextIdx);
       setCheckResult(null);
-      questionStartMs.current = Date.now();
+      questionStartMs.current = currentTimeMs();
     } else {
       submitAll(answers);
     }

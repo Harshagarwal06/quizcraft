@@ -1,0 +1,173 @@
+# QuizCraft — Build Log & Roadmap
+
+> A single reference for **what's built** and **what's planned** (Quality Engine
+> Phases 1–3). For day-to-day contributor conventions see [`CLAUDE.md`](../CLAUDE.md);
+> for setup see [`README.md`](../README.md).
+
+---
+
+## 1. The thesis
+
+QuizCraft turns notes / PDFs / a topic prompt into a multiple-choice quiz with an
+LLM, lets you play it one question at a time, and tracks accuracy on a dashboard.
+
+A plain "AI generates a quiz" app is commodity — it's one LLM API call behind a
+CRUD app. The **differentiator** being built here is the **Quality Engine**: a
+reliability + evaluation layer that *proves and improves* the quality of LLM
+output instead of trusting it. That is the scarce, currently-valuable skill, and
+it's the through-line of Phases 1–3 below.
+
+**The headline metric we're building toward:** the rate at which an independent
+model finds generated questions to be wrong/ungrounded, before vs. after the
+repair loop — i.e. "cut shipped error rate from X% to ~0 on played questions."
+
+---
+
+## 2. What's built today
+
+### 2.1 Core app
+- **Stack:** Next.js 16 (App Router, Turbopack) + React 19 + TypeScript (strict),
+  Tailwind v4, Prisma 7 on the libSQL driver adapter (local SQLite file / remote
+  Turso), Zod for request + LLM-output validation, Recharts for the dashboard.
+- **Generation flow:** `POST /api/quizzes` → extract text → optional **Gemini topic
+  expansion** (for bare prompts / thin input) → generate via the selected provider
+  → shuffle option positions → persist → return `{ id }`.
+- **Play & scoring:** `GET /api/quizzes/[id]` serves questions with the answer key
+  stripped; per-answer feedback via `…/check`; final submit via `POST /api/attempts`
+  is **scored server-side** (never trust the client). Dashboard aggregates via
+  `GET /api/dashboard`.
+- **Providers:** pluggable behind a `QuizGenerator` interface —
+  **HuggingFace** (Qwen2.5-72B-Instruct) and **Google Gemini** (structured JSON).
+  Selected by `LLM_PROVIDER`. Anthropic was removed (unused).
+
+### 2.2 Reliability work already shipped
+- **Generation timeouts fixed:** scaled `max_tokens` to the question count, added
+  per-call abort timeouts, and a budget-aware retry so a slow model can't blow the
+  60s serverless limit.
+- **Answer-position bias fixed:** `shuffleQuizOptions()` randomizes the correct
+  option's letter after generation (LLMs cluster answers at A/B).
+- **Automatic provider fallback:** `generateWithFallback()` tries the preferred
+  provider, then the other configured one — budget-aware so a fallback never
+  overruns the function limit. Recovers from fast provider failures (503/auth).
+- **Dashboard performance:** batched schema DDL, cached the guest user id, and
+  pushed aggregation into SQL (`GROUP BY`) so it stays fast as data grows.
+
+### 2.3 Quality Engine — **Phase 1 (SHIPPED)**
+An **independent cross-model verifier + bounded repair loop**.
+
+**How it runs (async, decoupled from generation):**
+1. Generation persists the quiz with `verificationStatus="pending"` and saves the
+   exact grounding text the generator saw (`Quiz.groundingText`).
+2. The player fires `POST /api/quizzes/[id]/verify` once (idempotent — a DB
+   `updateMany` lock moves `pending|failed → verifying`; duplicate calls get `202`).
+   It runs in its **own request / 60s budget**, because generation is already near
+   its limit.
+3. **Verifier** (`selectVerifier()`): picks the provider **opposite** the generator
+   (e.g. generate HF → verify Gemini) for genuine independence; override with
+   `VERIFIER_PROVIDER`; falls back to same-model self-check, or `skipped` if no key
+   / no grounding text. It audits each question against the source:
+   *grounded? answer correct & unique? distractors all wrong?*
+4. **Repair loop** (`verifyAndRepair`, one bounded round):
+   - wrong-but-sound answer key → **relabel the correct option in place** (`repaired`)
+   - ungrounded / ambiguous / bad distractor → **regenerate + re-verify**; swap in
+     if it passes, else **`flagged`**
+   - otherwise → **`pass`**
+5. Results persist: per-`Question` `verdict` + `verificationDetail` (JSON), and
+   `Quiz.verificationSummary` / `verifierModel` / `verifiedAt`, status `verified`.
+
+**Safety:** the play `GET` returns only the verdict **badge** (pass/repaired) — never
+`verificationDetail` (it names the correct option) — and **excludes `flagged`
+questions** from both play and scoring.
+
+**UI:** a "Verifying quiz quality…" gate while it runs, then a "Quality-checked by
+<model> · N checked · R repaired · F removed" chip and per-question ✓ Verified /
+↻ Repaired badges.
+
+**Verified end-to-end:** the verifier caught a wrong answer key and repaired it
+(`failedInitial:1, repaired:1`); answer key never leaked; idempotent re-fire;
+tolerant of HF's loose JSON.
+
+**Key files:** `lib/llm/client.ts`, `lib/llm/verify/{types,prompt,index,repair}.ts`,
+`app/api/quizzes/[id]/verify/route.ts`; play/scoring/UI edits in
+`app/api/quizzes/[id]/route.ts`, `app/api/attempts/route.ts`, `app/quiz/[id]/page.tsx`.
+
+---
+
+## 3. Roadmap
+
+### Phase 1 — Verifier + repair loop ✅ DONE
+See §2.3. Outcome: no learner is scored on a known-bad question, and every quiz
+records how many questions initially failed verification.
+
+### Phase 2 — Evaluation harness & calibration ✅ DONE
+**Goal:** turn ad-hoc verification into a *measured, defensible benchmark* — the
+part that produces the resume number.
+
+**What shipped:**
+- **Eval dataset:** fixed in-repo source passages in `eval/datasets/phase2-sources.json`,
+  including benchmark and heldout splits.
+- **Calibration set:** 50 hand-labeled MCQ cases in
+  `eval/datasets/calibration-cases.json`, covering correct, wrong-key,
+  ungrounded, ambiguous, and invalid-distractor examples.
+- **Offline-first runner:** `npm run eval` uses checked-in fixtures, makes no
+  network calls, validates fixture shape, and writes JSON/Markdown reports to
+  `eval/reports/phase2-latest.{json,md}`.
+- **Live refresh path:** `npm run eval:live` reuses the app's configured generator,
+  verifier, and bounded repair loop to refresh provider outputs when API keys are
+  present.
+- **Metrics:** schema validity, grounding, answer-key correctness, unique-answer
+  rate, distractor validity, difficulty distribution, repair/removal rates,
+  baseline error rate, and post-repair shipped-error rate with Wilson 95%
+  confidence intervals.
+- **Judge calibration:** reports precision, recall, F1, accuracy, dimension-level
+  agreement, and Cohen's κ against human labels.
+- **Methodology:** see [`QUALITY_ENGINE_PHASE2.md`](./QUALITY_ENGINE_PHASE2.md).
+
+**Current fixture result:** baseline error rate `24/30 (80.0%)` → post-repair
+shipped-question error rate `0/24 (0.0%)`; calibration κ `0.8369` (`pass`).
+
+### Phase 3 — Quality dashboard & regression gating 🔜 LATER
+**Goal:** make quality observable over time and prevent silent regressions.
+
+- **Trend dashboard:** verification metrics over time and across provider/prompt
+  versions (reuse Recharts + the existing dashboard patterns).
+- **Regression gate:** every prompt/model change runs the Phase 2 eval suite;
+  changes that regress quality beyond a threshold fail the check (CI-style).
+- **Provenance:** track which generator/verifier/prompt version produced each quiz
+  so quality can be attributed to changes.
+
+### Explicitly out of scope (for now)
+- A durable job queue (QStash/Inngest) — client-triggered verification with an
+  idempotent lock is sufficient for the generate-then-play flow.
+- Real auth — currently bypassed (shared guest user).
+
+---
+
+## 4. Configuration notes
+
+- **Providers:** `LLM_PROVIDER` = `hf` | `gemini` (generator); `VERIFIER_PROVIDER`
+  optional (defaults to the provider opposite `LLM_PROVIDER` for cross-model).
+- **Keys:** `HF_API_KEY`, `GEMINI_API_KEY` (+ optional `GEMINI_MODEL`). Gemini's key
+  also powers topic expansion, so the whole app can run on one Gemini key.
+- **Prod recommendation:** set `LLM_PROVIDER=gemini`. The HF free router (Qwen-72B)
+  intermittently exceeds the 40s generation budget and causes "Couldn't generate
+  the quiz"; Gemini's structured output returns reliably in ~20-25s and isn't
+  subject to that variance. With Gemini as generator, the verifier stays cross-model
+  (auto-selects HF) and is best-effort/non-blocking.
+- **Serverless limits:** generation and verification each run in their own route
+  with `maxDuration = 60`; all per-call timeouts/budgets are sized to stay under it.
+- **DB migrations:** changing the model means updating `prisma/schema.prisma`, a new
+  `prisma/migrations/*`, **and** the mirrored DDL in `lib/schema.ts`. New columns
+  self-provision on existing (Turso) DBs via additive `ALTER`s in `ensureSchema()`.
+
+---
+
+## 5. Status at a glance
+
+| Area | Status |
+|---|---|
+| Core app (generate / play / dashboard) | ✅ Shipped |
+| Generation reliability (timeouts, shuffle, fallback) | ✅ Shipped |
+| Quality Engine — Phase 1 (verifier + repair) | ✅ Shipped |
+| Phase 2 — eval harness + calibration + benchmark | ✅ Shipped |
+| Phase 3 — quality dashboard + regression gating | 🔜 Planned |

@@ -1,0 +1,755 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "cal-cell-001",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "Which stage replicates DNA?",
+        "options": [
+          { "id": "A", "text": "G1 phase" },
+          { "id": "B", "text": "S phase" },
+          { "id": "C", "text": "G2 phase" },
+          { "id": "D", "text": "M phase" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-cell-002",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "Which checkpoint verifies DNA replication is complete before mitosis?",
+        "options": [
+          { "id": "A", "text": "G1 checkpoint" },
+          { "id": "B", "text": "G2 checkpoint" },
+          { "id": "C", "text": "Spindle checkpoint" },
+          { "id": "D", "text": "Nutrient checkpoint only" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-cell-003",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": false, "answerSupported": false, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "C" },
+      "question": {
+        "stem": "Which tumor suppressor is called the guardian of the genome?",
+        "options": [
+          { "id": "A", "text": "Cyclin D" },
+          { "id": "B", "text": "CDK2" },
+          { "id": "C", "text": "p53" },
+          { "id": "D", "text": "Spindle fiber" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-cell-004",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "Which checkpoints can pause the cycle when DNA damage is present?",
+        "options": [
+          { "id": "A", "text": "G1 checkpoint" },
+          { "id": "B", "text": "G2 checkpoint" },
+          { "id": "C", "text": "Both G1 and G2 checkpoints" },
+          { "id": "D", "text": "Neither checkpoint" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-cell-005",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "D" },
+      "question": {
+        "stem": "What activates CDKs according to the material?",
+        "options": [
+          { "id": "A", "text": "Water molecules" },
+          { "id": "B", "text": "Stomata" },
+          { "id": "C", "text": "Glycogen" },
+          { "id": "D", "text": "Cyclins" }
+        ],
+        "correctOptionId": "D"
+      }
+    },
+    {
+      "id": "cal-cell-006",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "What does the spindle checkpoint delay?",
+        "options": [
+          { "id": "A", "text": "Chromosome separation" },
+          { "id": "B", "text": "Chromosome separation until attachment" },
+          { "id": "C", "text": "Glucose release" },
+          { "id": "D", "text": "Oxygen release" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-cell-007",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "What does the G1 checkpoint check before DNA synthesis?",
+        "options": [
+          { "id": "A", "text": "Only spindle attachment" },
+          { "id": "B", "text": "Only complete DNA replication" },
+          { "id": "C", "text": "Nutrients, growth signals, and DNA damage" },
+          { "id": "D", "text": "Only chlorophyll levels" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-cell-008",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "D" },
+      "question": {
+        "stem": "Which checkpoint occurs during mitosis?",
+        "options": [
+          { "id": "A", "text": "G1 checkpoint" },
+          { "id": "B", "text": "G2 checkpoint" },
+          { "id": "C", "text": "S checkpoint" },
+          { "id": "D", "text": "Spindle checkpoint" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-cell-009",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "What can checkpoint signaling do after severe DNA damage?",
+        "options": [
+          { "id": "A", "text": "Pause the cycle for repair" },
+          { "id": "B", "text": "Release glucagon" },
+          { "id": "C", "text": "Open stomata" },
+          { "id": "D", "text": "Return 304 Not Modified" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-cell-010",
+      "sourceId": "cell-cycle",
+      "expected": { "grounded": false, "answerSupported": false, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "How many minutes does the material say mitosis lasts?",
+        "options": [
+          { "id": "A", "text": "30 minutes" },
+          { "id": "B", "text": "60 minutes" },
+          { "id": "C", "text": "90 minutes" },
+          { "id": "D", "text": "120 minutes" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-glucose-001",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "Which cells release insulin when blood glucose rises?",
+        "options": [
+          { "id": "A", "text": "Pancreatic beta cells" },
+          { "id": "B", "text": "Pancreatic alpha cells" },
+          { "id": "C", "text": "Liver cells" },
+          { "id": "D", "text": "Muscle cells" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-glucose-002",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "Which hormone signals the liver to break down glycogen?",
+        "options": [
+          { "id": "A", "text": "Insulin" },
+          { "id": "B", "text": "Cyclin" },
+          { "id": "C", "text": "Glucagon" },
+          { "id": "D", "text": "Chlorophyll" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-glucose-003",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "D" },
+      "question": {
+        "stem": "Type 1 diabetes is described as what?",
+        "options": [
+          { "id": "A", "text": "HTTP validator failure" },
+          { "id": "B", "text": "Insulin resistance only" },
+          { "id": "C", "text": "Low-selectivity indexing" },
+          { "id": "D", "text": "Autoimmune beta-cell destruction" }
+        ],
+        "correctOptionId": "D"
+      }
+    },
+    {
+      "id": "cal-glucose-004",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "What does insulin promote after a carbohydrate-rich meal?",
+        "options": [
+          { "id": "A", "text": "Glucose uptake by muscle and fat cells" },
+          { "id": "B", "text": "Glycogen storage in the liver" },
+          { "id": "C", "text": "Both glucose uptake and glycogen storage" },
+          { "id": "D", "text": "No glucose storage" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-glucose-005",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": false, "answerSupported": false, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "B" },
+      "question": {
+        "stem": "Which drug class is recommended first for Type 2 diabetes?",
+        "options": [
+          { "id": "A", "text": "Sulfonylureas" },
+          { "id": "B", "text": "Metformin" },
+          { "id": "C", "text": "GLP-1 agonists" },
+          { "id": "D", "text": "Insulin pumps" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-glucose-006",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "When is glucagon released according to the material?",
+        "options": [
+          { "id": "A", "text": "After glucose rises" },
+          { "id": "B", "text": "During DNA replication" },
+          { "id": "C", "text": "When blood glucose falls between meals" },
+          { "id": "D", "text": "When cache max-age expires" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-glucose-007",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "Type 2 diabetes is characterized by what?",
+        "options": [
+          { "id": "A", "text": "Autoimmune beta-cell destruction only" },
+          { "id": "B", "text": "Insulin resistance" },
+          { "id": "C", "text": "Chromosome separation" },
+          { "id": "D", "text": "Oxygen release from water" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-glucose-008",
+      "sourceId": "glucose-regulation",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "Which organ releases glucose after glucagon signaling?",
+        "options": [
+          { "id": "A", "text": "Liver" },
+          { "id": "B", "text": "The liver after breaking down glycogen" },
+          { "id": "C", "text": "Thylakoid membrane" },
+          { "id": "D", "text": "Database index" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-sql-001",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "What is a database index used for?",
+        "options": [
+          { "id": "A", "text": "Encrypting all rows" },
+          { "id": "B", "text": "Locating rows without scanning every row" },
+          { "id": "C", "text": "Opening leaf stomata" },
+          { "id": "D", "text": "Producing NADPH" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-sql-002",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "Which index type is commonly used for equality and range queries?",
+        "options": [
+          { "id": "A", "text": "Hash-only index" },
+          { "id": "B", "text": "Bitmap-only index" },
+          { "id": "C", "text": "B-tree index" },
+          { "id": "D", "text": "Spindle index" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-sql-003",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "D" },
+      "question": {
+        "stem": "What is one cost of adding indexes?",
+        "options": [
+          { "id": "A", "text": "They remove all storage overhead" },
+          { "id": "B", "text": "They prevent SELECT queries" },
+          { "id": "C", "text": "They stop all updates" },
+          { "id": "D", "text": "They add storage and maintenance overhead" }
+        ],
+        "correctOptionId": "D"
+      }
+    },
+    {
+      "id": "cal-sql-004",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": false, "answerSupported": false, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "Which PostgreSQL command rebuilds indexes concurrently?",
+        "options": [
+          { "id": "A", "text": "REINDEX CONCURRENTLY" },
+          { "id": "B", "text": "VACUUM FREEZE" },
+          { "id": "C", "text": "ANALYZE FULL" },
+          { "id": "D", "text": "CREATE TABLE" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-sql-005",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": false, "correctOptionId": "B" },
+      "question": {
+        "stem": "Why does column order matter in a composite index?",
+        "options": [
+          { "id": "A", "text": "It changes the SQL language" },
+          { "id": "B", "text": "It affects query planning" },
+          { "id": "C", "text": "Column order affects query planning" },
+          { "id": "D", "text": "It releases glucose" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-sql-006",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "What can a covering index let a database do?",
+        "options": [
+          { "id": "A", "text": "Answer a query from the index alone" },
+          { "id": "B", "text": "Skip maintaining indexes" },
+          { "id": "C", "text": "Change HTTP validators" },
+          { "id": "D", "text": "Delay chromosome separation" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-sql-007",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "When are indexes least helpful according to the material?",
+        "options": [
+          { "id": "A", "text": "On every large table" },
+          { "id": "B", "text": "On highly selective columns" },
+          { "id": "C", "text": "On small tables or low-selectivity columns" },
+          { "id": "D", "text": "On all range queries" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-sql-008",
+      "sourceId": "sql-indexes",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "What can indexes speed up or slow down?",
+        "options": [
+          { "id": "A", "text": "SELECT queries" },
+          { "id": "B", "text": "INSERT, UPDATE, and DELETE operations" },
+          { "id": "C", "text": "Both reads and writes in different ways" },
+          { "id": "D", "text": "Neither reads nor writes" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-photo-001",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "Where do light-dependent reactions occur in plants?",
+        "options": [
+          { "id": "A", "text": "Chloroplast stroma" },
+          { "id": "B", "text": "Pancreatic beta cells" },
+          { "id": "C", "text": "Thylakoid membranes" },
+          { "id": "D", "text": "Database indexes" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-photo-002",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "D" },
+      "question": {
+        "stem": "What does the Calvin cycle use to build sugars?",
+        "options": [
+          { "id": "A", "text": "Oxygen, water, and insulin" },
+          { "id": "B", "text": "Only blue light" },
+          { "id": "C", "text": "ETag and max-age" },
+          { "id": "D", "text": "Carbon dioxide, ATP, and NADPH" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-photo-003",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "What gas is released when water is split?",
+        "options": [
+          { "id": "A", "text": "Oxygen" },
+          { "id": "B", "text": "Carbon dioxide" },
+          { "id": "C", "text": "Glucagon" },
+          { "id": "D", "text": "Nitrogen" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-photo-004",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "B" },
+      "question": {
+        "stem": "Which colors does chlorophyll absorb most strongly?",
+        "options": [
+          { "id": "A", "text": "Blue" },
+          { "id": "B", "text": "Blue and red" },
+          { "id": "C", "text": "Red" },
+          { "id": "D", "text": "Green only" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-photo-005",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": false, "answerSupported": false, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "C" },
+      "question": {
+        "stem": "Which enzyme fixes carbon dioxide in the Calvin cycle?",
+        "options": [
+          { "id": "A", "text": "ATP synthase" },
+          { "id": "B", "text": "DNA polymerase" },
+          { "id": "C", "text": "Rubisco" },
+          { "id": "D", "text": "Cyclin kinase" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-photo-006",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": false, "correctOptionId": "D" },
+      "question": {
+        "stem": "What is a tradeoff of opening stomata?",
+        "options": [
+          { "id": "A", "text": "It prevents carbon dioxide entry" },
+          { "id": "B", "text": "It stops water loss" },
+          { "id": "C", "text": "It stores HTTP responses" },
+          { "id": "D", "text": "It allows CO2 entry but may increase water loss" }
+        ],
+        "correctOptionId": "D"
+      }
+    },
+    {
+      "id": "cal-photo-007",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "Where does the Calvin cycle occur?",
+        "options": [
+          { "id": "A", "text": "Thylakoid membrane" },
+          { "id": "B", "text": "Chloroplast stroma" },
+          { "id": "C", "text": "Pancreatic alpha cells" },
+          { "id": "D", "text": "Spindle fibers" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-photo-008",
+      "sourceId": "photosynthesis",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "What is photosynthesis converting?",
+        "options": [
+          { "id": "A", "text": "Light energy into chemical energy in sugars" },
+          { "id": "B", "text": "Glucose into ATP only" },
+          { "id": "C", "text": "Indexes into rows" },
+          { "id": "D", "text": "ETags into oxygen" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-triage-001",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "What is triage primarily used for?",
+        "options": [
+          { "id": "A", "text": "Sorting patients by urgency" },
+          { "id": "B", "text": "Making a final diagnosis" },
+          { "id": "C", "text": "Storing glycogen" },
+          { "id": "D", "text": "Creating database indexes" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-triage-002",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "Which assessment areas are checked early because threats can be fatal?",
+        "options": [
+          { "id": "A", "text": "Skin, eyes, and ears" },
+          { "id": "B", "text": "Diet, exercise, and sleep" },
+          { "id": "C", "text": "Airway, breathing, and circulation" },
+          { "id": "D", "text": "G1, S, and G2" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-triage-003",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "D" },
+      "question": {
+        "stem": "Who needs rapid attention in the material?",
+        "options": [
+          { "id": "A", "text": "Only patients with minor injuries" },
+          { "id": "B", "text": "Stable patients who can wait" },
+          { "id": "C", "text": "Anyone with a completed quiz" },
+          { "id": "D", "text": "A patient with severe respiratory distress" }
+        ],
+        "correctOptionId": "D"
+      }
+    },
+    {
+      "id": "cal-triage-004",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "B" },
+      "question": {
+        "stem": "Which patients can usually wait longer?",
+        "options": [
+          { "id": "A", "text": "Stable patients" },
+          { "id": "B", "text": "Stable patients with minor injuries" },
+          { "id": "C", "text": "Patients with signs of shock" },
+          { "id": "D", "text": "Patients with severe respiratory distress" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-triage-005",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": false, "answerSupported": false, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "C" },
+      "question": {
+        "stem": "Which five-level triage scale does the material recommend?",
+        "options": [
+          { "id": "A", "text": "START" },
+          { "id": "B", "text": "NEWS2" },
+          { "id": "C", "text": "ESI" },
+          { "id": "D", "text": "APGAR" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-triage-006",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "C" },
+      "question": {
+        "stem": "What can change as new information appears?",
+        "options": [
+          { "id": "A", "text": "The source material" },
+          { "id": "B", "text": "The HTTP max-age directive" },
+          { "id": "C", "text": "Triage priority" },
+          { "id": "D", "text": "DNA replication stage" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-triage-007",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "What reduces the risk of missing a worsening patient?",
+        "options": [
+          { "id": "A", "text": "Avoiding reassessment" },
+          { "id": "B", "text": "Clear communication and frequent reassessment" },
+          { "id": "C", "text": "Only final diagnosis" },
+          { "id": "D", "text": "Opening stomata" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-triage-008",
+      "sourceId": "clinical-triage",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "What is triage not?",
+        "options": [
+          { "id": "A", "text": "A final diagnosis" },
+          { "id": "B", "text": "A prioritization process" },
+          { "id": "C", "text": "A way to sort urgency" },
+          { "id": "D", "text": "A process that can change" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-http-001",
+      "sourceId": "http-caching",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "What does Cache-Control: max-age indicate?",
+        "options": [
+          { "id": "A", "text": "Never store the response" },
+          { "id": "B", "text": "How long a response is fresh" },
+          { "id": "C", "text": "Which columns form an index" },
+          { "id": "D", "text": "Which cells release insulin" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-http-002",
+      "sourceId": "http-caching",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "What does no-store instruct caches to do?",
+        "options": [
+          { "id": "A", "text": "Not store the response at all" },
+          { "id": "B", "text": "Store it forever" },
+          { "id": "C", "text": "Return every body as 304" },
+          { "id": "D", "text": "Vary by every header" }
+        ],
+        "correctOptionId": "B"
+      }
+    },
+    {
+      "id": "cal-http-003",
+      "sourceId": "http-caching",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "D" },
+      "question": {
+        "stem": "What is ETag used as?",
+        "options": [
+          { "id": "A", "text": "A hormone" },
+          { "id": "B", "text": "A triage diagnosis" },
+          { "id": "C", "text": "A chlorophyll pigment" },
+          { "id": "D", "text": "A cache validator" }
+        ],
+        "correctOptionId": "D"
+      }
+    },
+    {
+      "id": "cal-http-004",
+      "sourceId": "http-caching",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "C" },
+      "question": {
+        "stem": "When can a server return 304 Not Modified?",
+        "options": [
+          { "id": "A", "text": "When a representation has not changed" },
+          { "id": "B", "text": "When a cached representation is still current" },
+          { "id": "C", "text": "When validation shows no change" },
+          { "id": "D", "text": "When no-store is present" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-http-005",
+      "sourceId": "http-caching",
+      "expected": { "grounded": false, "answerSupported": false, "uniqueAnswer": false, "distractorsValid": false, "correctOptionId": "A" },
+      "question": {
+        "stem": "Which CDN vendor invented the Vary header?",
+        "options": [
+          { "id": "A", "text": "Akamai" },
+          { "id": "B", "text": "Cloudflare" },
+          { "id": "C", "text": "Fastly" },
+          { "id": "D", "text": "Vercel" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-http-006",
+      "sourceId": "http-caching",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": false, "correctOptionId": "C" },
+      "question": {
+        "stem": "What does Vary tell caches?",
+        "options": [
+          { "id": "A", "text": "Never store personalized responses" },
+          { "id": "B", "text": "How long a response is fresh" },
+          { "id": "C", "text": "Which request headers affect the response" },
+          { "id": "D", "text": "That Accept-Encoding can affect responses" }
+        ],
+        "correctOptionId": "C"
+      }
+    },
+    {
+      "id": "cal-http-007",
+      "sourceId": "http-caching",
+      "expected": { "grounded": true, "answerSupported": false, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "B" },
+      "question": {
+        "stem": "What risk can incorrect caching of personalized responses create?",
+        "options": [
+          { "id": "A", "text": "Improved privacy" },
+          { "id": "B", "text": "Private data exposure" },
+          { "id": "C", "text": "Lower water loss" },
+          { "id": "D", "text": "Faster mitosis" }
+        ],
+        "correctOptionId": "A"
+      }
+    },
+    {
+      "id": "cal-http-008",
+      "sourceId": "http-caching",
+      "expected": { "grounded": true, "answerSupported": true, "uniqueAnswer": true, "distractorsValid": true, "correctOptionId": "A" },
+      "question": {
+        "stem": "Why can HTTP caching be useful?",
+        "options": [
+          { "id": "A", "text": "It can serve later requests faster" },
+          { "id": "B", "text": "It always removes validation" },
+          { "id": "C", "text": "It destroys cached responses" },
+          { "id": "D", "text": "It diagnoses patients" }
+        ],
+        "correctOptionId": "A"
+      }
+    }
+  ]
+}
