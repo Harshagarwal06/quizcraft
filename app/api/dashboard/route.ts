@@ -14,80 +14,83 @@ export async function GET() {
   }
 }
 
+// SQLite aggregates come back as bigint via the driver adapter; normalize.
+type GroupRow = { label: string; total: bigint | number; correct: bigint | number };
+type TotalsRow = { totalAnswered: bigint | number; totalCorrect: bigint | number };
+const n = (v: bigint | number | null) => Number(v ?? 0);
+const pct = (correct: number, total: number) =>
+  total > 0 ? Math.round((correct / total) * 100) : 0;
+
 async function buildDashboard() {
   const userId = await getCurrentUserId();
 
-  const [attempts, answerRecords] = await Promise.all([
+  // Aggregate in the database (GROUP BY over a JOIN) instead of pulling every
+  // answer record into memory — the result set stays tiny as the data grows.
+  const [attempts, byDifficultyRows, byTopicRows, totalsRows] = await Promise.all([
     prisma.attempt.findMany({
       where: { userId, completedAt: { not: null } },
       orderBy: { startedAt: "asc" },
       select: {
-        id: true,
         score: true,
         totalQuestions: true,
         startedAt: true,
         quiz: { select: { title: true } },
       },
     }),
-    prisma.answerRecord.findMany({
-      where: { attempt: { userId } },
-      select: {
-        isCorrect: true,
-        question: { select: { difficulty: true, topic: true } },
-      },
-    }),
+    prisma.$queryRaw<GroupRow[]>`
+      SELECT q."difficulty" AS label,
+             COUNT(*) AS total,
+             SUM(CASE WHEN ar."isCorrect" THEN 1 ELSE 0 END) AS correct
+      FROM "AnswerRecord" ar
+      JOIN "Question" q ON q."id" = ar."questionId"
+      JOIN "Attempt" a ON a."id" = ar."attemptId"
+      WHERE a."userId" = ${userId}
+      GROUP BY q."difficulty"`,
+    prisma.$queryRaw<GroupRow[]>`
+      SELECT q."topic" AS label,
+             COUNT(*) AS total,
+             SUM(CASE WHEN ar."isCorrect" THEN 1 ELSE 0 END) AS correct
+      FROM "AnswerRecord" ar
+      JOIN "Question" q ON q."id" = ar."questionId"
+      JOIN "Attempt" a ON a."id" = ar."attemptId"
+      WHERE a."userId" = ${userId}
+      GROUP BY q."topic"
+      ORDER BY total DESC
+      LIMIT 10`,
+    prisma.$queryRaw<TotalsRow[]>`
+      SELECT COUNT(*) AS totalAnswered,
+             SUM(CASE WHEN ar."isCorrect" THEN 1 ELSE 0 END) AS totalCorrect
+      FROM "AnswerRecord" ar
+      JOIN "Attempt" a ON a."id" = ar."attemptId"
+      WHERE a."userId" = ${userId}`,
   ]);
 
   // Accuracy over time (one point per attempt)
   const accuracyOverTime = attempts.map((a) => ({
     date: a.startedAt.toISOString().slice(0, 10),
-    accuracy: a.totalQuestions > 0 ? Math.round(((a.score ?? 0) / a.totalQuestions) * 100) : 0,
+    accuracy: pct(a.score ?? 0, a.totalQuestions),
     quizTitle: a.quiz?.title ?? "Untitled quiz",
   }));
 
-  // Per-difficulty breakdown
-  const difficultyMap: Record<string, { correct: number; total: number }> = {};
-  for (const r of answerRecords) {
-    const d = r.question?.difficulty;
-    if (!d) continue;
-    if (!difficultyMap[d]) difficultyMap[d] = { correct: 0, total: 0 };
-    difficultyMap[d].total++;
-    if (r.isCorrect) difficultyMap[d].correct++;
-  }
-  const byDifficulty = Object.entries(difficultyMap).map(([difficulty, v]) => ({
-    difficulty,
-    accuracy: Math.round((v.correct / v.total) * 100),
-    total: v.total,
+  const byDifficulty = byDifficultyRows.map((r) => ({
+    difficulty: r.label,
+    accuracy: pct(n(r.correct), n(r.total)),
+    total: n(r.total),
   }));
 
-  // Per-topic breakdown (top 10)
-  const topicMap: Record<string, { correct: number; total: number }> = {};
-  for (const r of answerRecords) {
-    const t = r.question?.topic;
-    if (!t) continue;
-    if (!topicMap[t]) topicMap[t] = { correct: 0, total: 0 };
-    topicMap[t].total++;
-    if (r.isCorrect) topicMap[t].correct++;
-  }
-  const byTopic = Object.entries(topicMap)
-    .map(([topic, v]) => ({
-      topic,
-      accuracy: Math.round((v.correct / v.total) * 100),
-      total: v.total,
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 10);
+  const byTopic = byTopicRows.map((r) => ({
+    topic: r.label,
+    accuracy: pct(n(r.correct), n(r.total)),
+    total: n(r.total),
+  }));
 
   // Summary stats
-  const totalAttempts = attempts.length;
-  const totalAnswered = answerRecords.length;
-  const totalCorrect = answerRecords.filter((r) => r.isCorrect).length;
-  const overallAccuracy =
-    totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+  const totalAnswered = n(totalsRows[0]?.totalAnswered);
+  const totalCorrect = n(totalsRows[0]?.totalCorrect);
 
   return NextResponse.json({
-    overallAccuracy,
-    totalAttempts,
+    overallAccuracy: pct(totalCorrect, totalAnswered),
+    totalAttempts: attempts.length,
     totalAnswered,
     accuracyOverTime,
     byDifficulty,

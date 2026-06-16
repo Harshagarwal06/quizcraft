@@ -37,9 +37,9 @@ export function ensureSchema(): Promise<void> {
     globalForPrisma.schemaReady = (async () => {
       const client = createClient(dbConfig());
       try {
-        for (const stmt of SCHEMA_STATEMENTS) {
-          await client.execute(stmt);
-        }
+        // One round-trip for all DDL instead of N serial executes — on remote
+        // (Turso) the per-statement network latency otherwise dominates cold starts.
+        await client.batch(SCHEMA_STATEMENTS, "write");
       } finally {
         client.close();
       }
