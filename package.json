@@ -9,6 +9,8 @@
     "lint": "eslint",
     "eval": "tsx eval/run.ts",
     "eval:live": "tsx eval/run.ts --live",
+    "eval:check": "tsx eval/run.ts --check",
+    "eval:check:live": "tsx eval/run.ts --live --check",
     "postinstall": "prisma generate",
     "db:deploy": "node scripts/apply-migrations.mjs"
   },
@@ -22,6 +24,7 @@
     "next": "16.2.9",
     "next-auth": "^5.0.0-beta.31",
     "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.19.1",
     "prisma": "^7.8.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",

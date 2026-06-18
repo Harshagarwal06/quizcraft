@@ -6,6 +6,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { generateWithFallback } from "@/lib/llm";
+import { GENERATOR_PROMPT_HASH } from "@/lib/llm/prompt";
+import { HF_MODEL_NAME, geminiModelName } from "@/lib/llm/client";
 import { shuffleQuizOptions } from "@/lib/llm/shuffle";
 import { expandTopic } from "@/lib/expand";
 import { extractText } from "@/lib/extract";
@@ -113,6 +115,9 @@ export async function POST(req: NextRequest) {
         // The exact material the generator saw (post-expansion) — the verifier
         // must audit against this. verificationStatus defaults to "pending".
         groundingText: materialText.slice(0, 60000),
+        // Provenance: which model + prompt version produced this quiz.
+        generatorModel: usedProvider === "gemini" ? geminiModelName() : HF_MODEL_NAME,
+        generatorPromptHash: GENERATOR_PROMPT_HASH,
         questionCount: generated.questions.length,
         questions: {
           create: generated.questions.map((q, i) => ({

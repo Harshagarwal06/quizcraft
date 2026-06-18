@@ -8,6 +8,7 @@ import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { GeneratedQuestion } from "@/lib/llm/types";
 import { selectVerifier } from "@/lib/llm/verify";
+import { VERIFIER_PROMPT_HASH } from "@/lib/llm/verify/prompt";
 import { verifyAndRepair } from "@/lib/llm/verify/repair";
 
 // Leave headroom under maxDuration for the final DB writes.
@@ -105,6 +106,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           verificationStatus: "verified",
           verifiedAt: new Date(),
           verifierModel: verifier.model,
+          verifierPromptHash: VERIFIER_PROMPT_HASH,
           verificationSummary: JSON.stringify(result.summary),
         },
       }),

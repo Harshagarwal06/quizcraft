@@ -52,6 +52,9 @@ export const SCHEMA_STATEMENTS: string[] = [
     "verifiedAt" DATETIME,
     "verifierModel" TEXT,
     "verificationSummary" TEXT,
+    "generatorModel" TEXT,
+    "generatorPromptHash" TEXT,
+    "verifierPromptHash" TEXT,
     CONSTRAINT "Quiz_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS "Question" (
@@ -108,4 +111,7 @@ export const ADDITIVE_COLUMNS: string[] = [
   `ALTER TABLE "Quiz" ADD COLUMN "verificationSummary" TEXT`,
   `ALTER TABLE "Question" ADD COLUMN "verdict" TEXT`,
   `ALTER TABLE "Question" ADD COLUMN "verificationDetail" TEXT`,
+  `ALTER TABLE "Quiz" ADD COLUMN "generatorModel" TEXT`,
+  `ALTER TABLE "Quiz" ADD COLUMN "generatorPromptHash" TEXT`,
+  `ALTER TABLE "Quiz" ADD COLUMN "verifierPromptHash" TEXT`,
 ];

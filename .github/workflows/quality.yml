@@ -1,0 +1,30 @@
+name: Quality gate
+
+# Lint + build + the deterministic OFFLINE Quality-Engine regression gate.
+# No secrets are used: the gate runs the offline eval (synthetic fixtures) and
+# fails on metric regression, dataset-integrity breaks, or prompt-hash drift —
+# the signal that a prompt changed and a live re-baseline is needed.
+# A real (live) quality check needs a paid GEMINI_API_KEY and is run manually /
+# on a schedule via `npm run eval:check:live`, not in this PR gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run build
+      - name: Offline regression gate
+        run: npm run eval:check

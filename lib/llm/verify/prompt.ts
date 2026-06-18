@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { AuditQuestion } from "./types";
 
 /**
@@ -43,3 +44,10 @@ export function buildVerifierMessage(material: string, questions: AuditQuestion[
 
   return lines.join("\n");
 }
+
+// Short fingerprint of the active verifier prompt — persisted as provenance and
+// used for CI prompt-drift detection.
+export const VERIFIER_PROMPT_HASH = createHash("sha256")
+  .update(VERIFIER_SYSTEM_PROMPT)
+  .digest("hex")
+  .slice(0, 12);

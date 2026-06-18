@@ -825,8 +825,59 @@ async function writeReports(report: EvalReport): Promise<void> {
   await writeFile(path.join(reportsDir, "phase2-latest.md"), renderMarkdown(report));
 }
 
+const baselineSchema = z.object({
+  offline: z.object({
+    promptHashes: z.object({ generator: z.string(), verifier: z.string() }),
+    minCalibrationKappa: z.number(),
+    minSchemaValidity: z.number(),
+  }),
+  live: z.object({
+    minCalibrationKappa: z.number(),
+    maxBaselineErrorRateLow: z.number().optional(),
+  }),
+});
+
+// Compare a report against the committed baseline. Offline is deterministic, so
+// it gates exact metrics + prompt-hash drift; live gates the calibrated κ.
+async function checkAgainstBaseline(report: EvalReport): Promise<string[]> {
+  const baseline = await readJson("eval/baseline.json", baselineSchema);
+  const failures: string[] = [];
+
+  if (report.config.live) {
+    if (report.calibration.cohenKappa < baseline.live.minCalibrationKappa) {
+      failures.push(
+        `live calibration κ ${report.calibration.cohenKappa} < required ${baseline.live.minCalibrationKappa}`
+      );
+    }
+  } else {
+    const ph = report.config.promptHashes;
+    if (ph.generator !== baseline.offline.promptHashes.generator) {
+      failures.push(
+        `generator prompt drift (${ph.generator} ≠ ${baseline.offline.promptHashes.generator}) — re-run the live eval and update eval/baseline.json`
+      );
+    }
+    if (ph.verifier !== baseline.offline.promptHashes.verifier) {
+      failures.push(
+        `verifier prompt drift (${ph.verifier} ≠ ${baseline.offline.promptHashes.verifier}) — re-run the live eval and update eval/baseline.json`
+      );
+    }
+    if (report.calibration.cohenKappa < baseline.offline.minCalibrationKappa) {
+      failures.push(
+        `offline calibration κ ${report.calibration.cohenKappa} < required ${baseline.offline.minCalibrationKappa}`
+      );
+    }
+    if (report.benchmark.schemaValidity.rate < baseline.offline.minSchemaValidity) {
+      failures.push(
+        `schema validity ${report.benchmark.schemaValidity.rate} < required ${baseline.offline.minSchemaValidity}`
+      );
+    }
+  }
+  return failures;
+}
+
 async function main(): Promise<void> {
   const live = process.argv.includes("--live");
+  const check = process.argv.includes("--check");
   const sourcesDataset = await readJson("eval/datasets/phase2-sources.json", phase2SourcesSchema);
   const calibrationDataset = await readJson(
     "eval/datasets/calibration-cases.json",
@@ -895,6 +946,17 @@ async function main(): Promise<void> {
     `Post-repair shipped error rate: ${report.benchmark.postRepairShippedErrorRate.count}/${report.benchmark.postRepairShippedErrorRate.total} (${percentage(report.benchmark.postRepairShippedErrorRate.rate)})${report.config.postRepairIndependent ? "" : " [self-consistency, not independent]"}`
   );
   console.log("Reports written to eval/reports/phase2-latest.{json,md}");
+
+  if (check) {
+    const failures = await checkAgainstBaseline(report);
+    if (failures.length > 0) {
+      console.error("\n❌ Regression gate FAILED:");
+      for (const f of failures) console.error(`  - ${f}`);
+      process.exitCode = 1;
+    } else {
+      console.log("\n✅ Regression gate passed (vs eval/baseline.json).");
+    }
+  }
 }
 
 main().catch((err) => {

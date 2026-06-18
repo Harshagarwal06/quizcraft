@@ -21,7 +21,18 @@ npm run lint       # eslint
 npm run db:deploy  # apply prisma/migrations/* to a remote libSQL/Turso DB
 npx prisma migrate dev   # create/apply a migration locally (file DB)
 npx prisma generate      # regenerate the Prisma client (also runs postinstall)
+
+npm run eval        # offline (synthetic) Quality-Engine eval — deterministic, no keys
+npm run eval:live   # live eval (needs GEMINI_API_KEY; paid tier — free tier is 20/day)
+npm run eval:check  # offline regression gate vs eval/baseline.json (used by CI)
 ```
+
+There is a **Quality-Engine eval harness** under `eval/` (Phase 2/3): `eval/run.ts`
+with `--live` / `--check` flags, datasets in `eval/datasets/`, fixtures in
+`eval/fixtures/`, and the regression baseline in `eval/baseline.json`. CI
+(`.github/workflows/quality.yml`) runs lint + build + the offline `eval:check`
+(prompt-hash drift + metric regression) on every PR. See
+`docs/QUALITY_ENGINE.md` / `docs/QUALITY_ENGINE_PHASE2.md`.
 
 There is **no test suite**. Verify changes with `npm run lint`, `npm run build`,
 and manual exercise of the relevant route/page.
@@ -54,7 +65,8 @@ app/
     quizzes/[id]/check/route.ts  POST check a single answer
     quizzes/[id]/verify/route.ts POST verify+repair quiz (Quality Engine)
     attempts/route.ts            POST submit attempt (server-scored), GET history
-    dashboard/route.ts           GET aggregated stats
+    dashboard/route.ts           GET aggregated learning stats
+    quality/route.ts             GET Quality-Engine stats (verdicts, repair/removal, provenance)
     auth/[...nextauth]/route.ts  NextAuth handlers (unused while auth is off)
     auth/signup/route.ts         credential signup (unused while auth is off)
 lib/

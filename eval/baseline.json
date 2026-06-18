@@ -1,0 +1,12 @@
+{
+  "_comment": "Regression-gate baseline for `npm run eval:check`. Update deliberately (and re-run the live eval) when prompts change. promptHashes guard against silent prompt drift; the offline path is deterministic so its thresholds are exact.",
+  "offline": {
+    "promptHashes": { "generator": "55518f6b1846", "verifier": "19f22dc84b54" },
+    "minCalibrationKappa": 0.8,
+    "minSchemaValidity": 1
+  },
+  "live": {
+    "minCalibrationKappa": 0.6,
+    "maxBaselineErrorRateLow": 0.999
+  }
+}

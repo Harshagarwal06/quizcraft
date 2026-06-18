@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { GenerationInput } from "./types";
 
 /**
@@ -71,3 +72,10 @@ export function buildUserMessage(input: GenerationInput): string {
   lines.push('"""');
   return lines.join("\n");
 }
+
+// Short fingerprint of the active generation prompt, persisted as provenance so
+// quality can be attributed to a prompt version (and prompt drift detected in CI).
+export const GENERATOR_PROMPT_HASH = createHash("sha256")
+  .update(SYSTEM_PROMPT)
+  .digest("hex")
+  .slice(0, 12);

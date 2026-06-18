@@ -77,6 +77,11 @@ model Quiz {
   verifierModel       String? // e.g. "gemini-2.5-flash" — which model audited
   verificationSummary String? // JSON: { total, passedInitial, failedInitial, repaired, flagged }
 
+  // Provenance — attribute quality to a specific model + prompt version
+  generatorModel      String? // model that generated the quiz
+  generatorPromptHash String? // short sha256 of SYSTEM_PROMPT at generation time
+  verifierPromptHash  String? // short sha256 of VERIFIER_SYSTEM_PROMPT at verify time
+
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   questions Question[]
   attempts  Attempt[]

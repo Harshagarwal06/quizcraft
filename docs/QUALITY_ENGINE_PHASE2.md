@@ -143,3 +143,13 @@ The calibration status is:
 - `pass` when Cohen's kappa is at least 0.60
 - `warning` when kappa is at least 0.40 and below 0.60
 - `failed` when kappa is below 0.40
+
+## Regression gating (Phase 3)
+
+`npm run eval:check` (offline) and `npm run eval:check:live` compare a run against
+the committed `eval/baseline.json` and exit non-zero on regression: metric drops,
+dataset-integrity breaks, or **prompt-hash drift** (the signal that a prompt
+changed and the live eval must be re-run + the baseline updated). The offline gate
+is deterministic and secret-free, so it runs in CI
+(`.github/workflows/quality.yml`); the live gate is for manual/scheduled runs on a
+paid Gemini tier.

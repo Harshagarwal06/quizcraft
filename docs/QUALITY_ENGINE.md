@@ -138,15 +138,27 @@ result. **Offline `npm run eval` numbers are synthetic plumbing tests, never cit
 this section will be filled with the live, calibrated κ + baseline error rate
 (judge model + date) once that run completes.
 
-### Phase 3 — Quality dashboard & regression gating 🔜 LATER
+### Phase 3 — Quality dashboard & regression gating ✅ DONE
 **Goal:** make quality observable over time and prevent silent regressions.
 
-- **Trend dashboard:** verification metrics over time and across provider/prompt
-  versions (reuse Recharts + the existing dashboard patterns).
-- **Regression gate:** every prompt/model change runs the Phase 2 eval suite;
-  changes that regress quality beyond a threshold fail the check (CI-style).
-- **Provenance:** track which generator/verifier/prompt version produced each quiz
-  so quality can be attributed to changes.
+**What shipped:**
+- **Production-quality dashboard:** a new `GET /api/quality` aggregates the app's
+  real verification data (question verdict distribution, initial-error-rate caught,
+  repair/removal rates, errors-caught over time, and a by-verifier-model breakdown).
+  Surfaced as a "Quality Engine" section on `/dashboard` (Recharts, existing card
+  styling).
+- **Provenance:** `Quiz.generatorModel`, `Quiz.generatorPromptHash`,
+  `Quiz.verifierPromptHash` record which model + prompt version produced and audited
+  each quiz, so quality attributes to a version (`GENERATOR_PROMPT_HASH` /
+  `VERIFIER_PROMPT_HASH` are computed once at module load).
+- **Regression gate:** a committed `eval/baseline.json` + `npm run eval:check`
+  (offline) / `eval:check:live` fail on metric regression, dataset-integrity breaks,
+  or **prompt-hash drift**. A GitHub Actions workflow (`.github/workflows/quality.yml`)
+  runs lint + build + the **offline** gate on every PR (no secrets).
+- **Offline vs live split (honest):** CI runs the deterministic offline gate, which
+  catches harness/logic regressions and prompt drift. A true *quality* regression
+  check needs a live run (`eval:check:live`, paid Gemini tier) run manually/nightly —
+  free-tier quota (20/day) makes live-in-CI infeasible.
 
 ### Explicitly out of scope (for now)
 - A durable job queue (QStash/Inngest) — client-triggered verification with an
@@ -182,4 +194,4 @@ this section will be filled with the live, calibrated κ + baseline error rate
 | Generation reliability (timeouts, shuffle, fallback) | ✅ Shipped |
 | Quality Engine — Phase 1 (verifier + repair) | ✅ Shipped |
 | Phase 2 — eval harness + calibration + benchmark | ✅ Shipped |
-| Phase 3 — quality dashboard + regression gating | 🔜 Planned |
+| Phase 3 — quality dashboard + regression gating + provenance | ✅ Shipped |
