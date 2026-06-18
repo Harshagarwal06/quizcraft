@@ -119,12 +119,24 @@ part that produces the resume number.
   rate, distractor validity, difficulty distribution, repair/removal rates,
   baseline error rate, and post-repair shipped-error rate with Wilson 95%
   confidence intervals.
+- **Independent eval judge:** a dedicated judge (`selectEvalJudge()`,
+  `EVAL_JUDGE_PROVIDER`) scores the benchmark and is calibrated against the human
+  labels — kept separate from the repair verifier so repairs aren't graded by the
+  model that made them.
 - **Judge calibration:** reports precision, recall, F1, accuracy, dimension-level
   agreement, and Cohen's κ against human labels.
 - **Methodology:** see [`QUALITY_ENGINE_PHASE2.md`](./QUALITY_ENGINE_PHASE2.md).
 
-**Current fixture result:** baseline error rate `24/30 (80.0%)` → post-repair
-shipped-question error rate `0/24 (0.0%)`; calibration κ `0.8369` (`pass`).
+**The defensible claim** (what we actually assert): the eval judge's **Cohen's κ
+vs. human labels** is the credibility anchor, and the **baseline error rate** is
+measured by a judge independent of the generator (cross-model). "Post-repair → ~0%"
+is only cited as independent when the eval judge differs from the repair verifier
+(`postRepairIndependent` in the report); otherwise it is self-consistency, not a
+result. **Offline `npm run eval` numbers are synthetic plumbing tests, never cited.**
+
+**Live numbers:** _pending a `npm run eval:live` run with `GEMINI_API_KEY` set_ —
+this section will be filled with the live, calibrated κ + baseline error rate
+(judge model + date) once that run completes.
 
 ### Phase 3 — Quality dashboard & regression gating 🔜 LATER
 **Goal:** make quality observable over time and prevent silent regressions.

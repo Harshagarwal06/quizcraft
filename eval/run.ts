@@ -21,6 +21,10 @@ const reportsDir = path.join(root, "eval", "reports");
 loadEnv({ path: path.join(root, ".env.local"), quiet: true });
 loadEnv({ path: path.join(root, ".env"), override: false, quiet: true });
 
+// Enable bounded Gemini rate-limit backoff for the eval (free tier is ~5 RPM).
+// Scoped to the harness so the app's time-budgeted routes are unaffected.
+process.env.EVAL_GEMINI_BACKOFF = "1";
+
 const optionIdSchema = z.enum(["A", "B", "C", "D"]);
 const expectedVerdictSchema = z.object({
   grounded: z.boolean(),
@@ -88,10 +92,20 @@ type ExpectedVerdict = z.infer<typeof expectedVerdictSchema>;
 
 interface EvalRunConfig {
   live: boolean;
+  // True for offline fixture runs: the numbers are synthetic harness validation,
+  // NOT measurements, and must never be cited as results.
+  synthetic: boolean;
   generatedAt: string;
   generatorProvider: string;
-  verifierProvider: string;
-  verifierModel: string;
+  // The model the app's repair loop uses (drives repairs).
+  repairVerifierProvider: string;
+  repairVerifierModel: string;
+  // The independent judge whose numbers we report and calibrate against humans.
+  evalJudgeProvider: string;
+  evalJudgeModel: string;
+  // True when the eval judge is a different provider than the repair verifier, so
+  // the post-repair re-judge is genuinely independent of the repair decision.
+  postRepairIndependent: boolean;
   promptHashes: {
     generator: string;
     verifier: string;
@@ -186,6 +200,44 @@ const calibrationFixtureDisagreements = new Map<string, Partial<ExpectedVerdict>
   ["cal-triage-008", { distractorsValid: true }],
   ["cal-http-004", { uniqueAnswer: true, distractorsValid: true }],
 ]);
+
+function normalizeProvider(p?: string): "hf" | "gemini" | undefined {
+  if (p === "hf" || p === "huggingface") return "hf";
+  if (p === "gemini" || p === "google") return "gemini";
+  return undefined;
+}
+
+function judgeFor(provider: "hf" | "gemini"): VerifierInfo | null {
+  if (provider === "hf") {
+    return process.env.HF_API_KEY ? { provider: "hf", model: HF_MODEL_NAME } : null;
+  }
+  return process.env.GEMINI_API_KEY ? { provider: "gemini", model: geminiModelName() } : null;
+}
+
+/**
+ * The eval judge is the model whose numbers we report and calibrate against the
+ * human labels — kept SEPARATE from the app's repair verifier. Default: the
+ * cross-model provider (opposite the generator), i.e. independent of generation,
+ * which gives a credible baseline error rate. Override with EVAL_JUDGE_PROVIDER
+ * (e.g. set it to the provider the repair loop does NOT use, to make the
+ * post-repair re-judge independent of the repair decision too).
+ *
+ * Two-provider limitation: with only HF + Gemini, a single judge can be
+ * independent of generation OR of repair, not both — see the methodology doc.
+ */
+function selectEvalJudge(): VerifierInfo {
+  const explicit = normalizeProvider(process.env.EVAL_JUDGE_PROVIDER);
+  if (explicit) {
+    const judge = judgeFor(explicit);
+    if (!judge) throw new Error(`EVAL_JUDGE_PROVIDER=${explicit} but its API key is not set`);
+    return judge;
+  }
+  const generator = normalizeProvider(process.env.LLM_PROVIDER) ?? "hf";
+  const opposite = generator === "hf" ? "gemini" : "hf";
+  const judge = judgeFor(opposite) ?? judgeFor(generator);
+  if (!judge) throw new Error("No eval judge available: set HF_API_KEY or GEMINI_API_KEY");
+  return judge;
+}
 
 function isPassingVerdict(v: Pick<QuestionVerdict, "grounded" | "answerSupported" | "uniqueAnswer" | "distractorsValid">): boolean {
   return v.grounded && v.answerSupported && v.uniqueAnswer && v.distractorsValid;
@@ -549,7 +601,11 @@ async function runOfflineBenchmark(sources: EvalSource[]): Promise<EvalReport["b
   return summarizeBenchmark(sources, benchmarkInputs);
 }
 
-async function runLiveBenchmark(sources: EvalSource[], verifier: VerifierInfo): Promise<EvalReport["benchmark"]> {
+async function runLiveBenchmark(
+  sources: EvalSource[],
+  repairVerifier: VerifierInfo,
+  evalJudge: VerifierInfo
+): Promise<EvalReport["benchmark"]> {
   const preferredProvider = process.env.LLM_PROVIDER ?? "hf";
   const benchmarkInputs = [];
   const runDeadline = Date.now() + 10 * 60_000;
@@ -566,6 +622,7 @@ async function runLiveBenchmark(sources: EvalSource[], verifier: VerifierInfo): 
       generationDeadline
     );
     const quiz = shuffleQuizOptions(generated.quiz);
+    // Baseline is scored by the INDEPENDENT eval judge (not the repair verifier).
     const baselineVerdicts = await verifyQuestions(
       source.sourceText,
       quiz.questions.map((q) => ({
@@ -573,16 +630,19 @@ async function runLiveBenchmark(sources: EvalSource[], verifier: VerifierInfo): 
         options: q.options,
         correctOptionId: q.correctOptionId,
       })),
-      verifier
+      evalJudge
     );
+    // Repair runs with the app's real verifier (drives the repair decisions).
     const repairedResult = await verifyAndRepair({
       material: source.sourceText,
       questions: quiz.questions,
-      verifier,
+      verifier: repairVerifier,
       deadline: Math.min(Date.now() + 120_000, runDeadline),
       seed: source.seed,
     });
     const shipped = repairedResult.questions.filter((r) => r.verdict !== "flagged");
+    // Shipped questions are re-judged by the eval judge — independent of repair
+    // when EVAL_JUDGE_PROVIDER differs from the repair verifier.
     const postVerdicts = shipped.length
       ? await verifyQuestions(
           source.sourceText,
@@ -591,7 +651,7 @@ async function runLiveBenchmark(sources: EvalSource[], verifier: VerifierInfo): 
             options: r.question.options,
             correctOptionId: r.question.correctOptionId,
           })),
-          verifier
+          evalJudge
         )
       : [];
 
@@ -608,7 +668,7 @@ async function runLiveBenchmark(sources: EvalSource[], verifier: VerifierInfo): 
       sourceId: source.id,
       generatorProvider: generated.provider,
       generatorModel: generated.provider === "gemini" ? geminiModelName() : HF_MODEL_NAME,
-      verifierModel: verifier.model,
+      verifierModel: evalJudge.model,
       quiz,
       baselineVerdicts,
       repaired,
@@ -618,7 +678,7 @@ async function runLiveBenchmark(sources: EvalSource[], verifier: VerifierInfo): 
   return summarizeBenchmark(sources, benchmarkInputs);
 }
 
-async function runCalibration(live: boolean, verifier: VerifierInfo | null, cases: CalibrationCase[], sourceById: Map<string, EvalSource>): Promise<EvalReport["calibration"]> {
+async function runCalibration(live: boolean, judge: VerifierInfo | null, cases: CalibrationCase[], sourceById: Map<string, EvalSource>): Promise<EvalReport["calibration"]> {
   if (!live) {
     return scoreCalibration(
       cases,
@@ -626,7 +686,7 @@ async function runCalibration(live: boolean, verifier: VerifierInfo | null, case
     );
   }
 
-  if (!verifier) throw new Error("Live calibration requires HF_API_KEY or GEMINI_API_KEY for a verifier");
+  if (!judge) throw new Error("Live calibration requires HF_API_KEY or GEMINI_API_KEY for the eval judge");
 
   const predictions: QuestionVerdict[] = new Array(cases.length);
   const casesBySource = new Map<string, { c: CalibrationCase, originalIndex: number }[]>();
@@ -640,7 +700,7 @@ async function runCalibration(live: boolean, verifier: VerifierInfo | null, case
     const source = sourceById.get(sourceId);
     if (!source) throw new Error(`Calibration case points to unknown source ${sourceId}`);
     const questions = grouped.map((g) => g.c.question);
-    const verdicts = await verifyQuestions(source.sourceText, questions, verifier);
+    const verdicts = await verifyQuestions(source.sourceText, questions, judge);
     for (let j = 0; j < grouped.length; j++) {
       predictions[grouped[j].originalIndex] = { ...verdicts[j], index: grouped[j].originalIndex };
     }
@@ -655,20 +715,50 @@ function renderMarkdown(report: EvalReport): string {
   const lines: string[] = [];
   lines.push("# Quality Engine Phase 2 Eval Report");
   lines.push("");
-  lines.push(`Mode: ${report.config.live ? "live providers" : "offline fixtures"}`);
+  if (report.config.synthetic) {
+    lines.push(
+      "> ⚠️ **OFFLINE FIXTURE MODE — these numbers are synthetic harness validation, NOT measurements.**"
+    );
+    lines.push(
+      "> The baseline verdicts and judge predictions are hand-authored fixtures used to test the"
+    );
+    lines.push(
+      "> metric plumbing. Do **not** cite them as results. Run `npm run eval:live` for real metrics."
+    );
+    lines.push("");
+  }
+  lines.push(`Mode: ${report.config.live ? "live providers" : "offline fixtures (synthetic)"}`);
   lines.push(`Generated: ${report.config.generatedAt}`);
+  if (report.config.live) {
+    lines.push(`Generator: ${report.config.generatorProvider}`);
+    lines.push(`Eval judge (scores + calibration): ${report.config.evalJudgeProvider} · ${report.config.evalJudgeModel}`);
+    lines.push(`Repair verifier (drives repairs): ${report.config.repairVerifierProvider} · ${report.config.repairVerifierModel}`);
+    lines.push(
+      `Post-repair independence: ${report.config.postRepairIndependent ? "yes (eval judge ≠ repair verifier)" : "no (eval judge == repair verifier — post-repair is self-consistency, not an independent re-judge)"}`
+    );
+  }
   lines.push(`Generator prompt hash: ${report.config.promptHashes.generator}`);
   lines.push(`Verifier prompt hash: ${report.config.promptHashes.verifier}`);
   lines.push("");
   lines.push("## Headline");
   lines.push("");
+  if (report.config.synthetic) {
+    lines.push("_(synthetic fixture — illustrative of the metric plumbing only)_");
+    lines.push("");
+  }
   lines.push(
-    `Baseline shipped-question error rate: ${b.baselineErrorRate.count}/${b.baselineErrorRate.total} (${percentage(b.baselineErrorRate.rate)}, 95% CI ${percentage(b.baselineErrorRate.wilson95.low)}-${percentage(b.baselineErrorRate.wilson95.high)}).`
+    `Calibration vs. human labels: Cohen's κ ${c.cohenKappa.toFixed(4)} (${c.status}) over ${c.caseCount} cases — the credibility anchor for the eval judge.`
   );
   lines.push(
-    `Post-repair shipped-question error rate: ${b.postRepairShippedErrorRate.count}/${b.postRepairShippedErrorRate.total} (${percentage(b.postRepairShippedErrorRate.rate)}, 95% CI ${percentage(b.postRepairShippedErrorRate.wilson95.low)}-${percentage(b.postRepairShippedErrorRate.wilson95.high)}).`
+    `Baseline error rate (independent ${report.config.live ? report.config.evalJudgeProvider : "fixture"} judge): ${b.baselineErrorRate.count}/${b.baselineErrorRate.total} (${percentage(b.baselineErrorRate.rate)}, 95% CI ${percentage(b.baselineErrorRate.wilson95.low)}-${percentage(b.baselineErrorRate.wilson95.high)}).`
   );
   lines.push(`Repair rate: ${percentage(b.repairRate.rate)}. Removal rate: ${percentage(b.removalRate.rate)}.`);
+  const postLabel = report.config.postRepairIndependent
+    ? "Post-repair shipped-question error rate (independent re-judge)"
+    : "Post-repair shipped error (same model that approved them — self-consistency, NOT independent)";
+  lines.push(
+    `${postLabel}: ${b.postRepairShippedErrorRate.count}/${b.postRepairShippedErrorRate.total} (${percentage(b.postRepairShippedErrorRate.rate)}, 95% CI ${percentage(b.postRepairShippedErrorRate.wilson95.low)}-${percentage(b.postRepairShippedErrorRate.wilson95.high)}).`
+  );
   lines.push("");
   lines.push("## Calibration");
   lines.push("");
@@ -720,8 +810,10 @@ function renderMarkdown(report: EvalReport): string {
   lines.push("");
   lines.push("## Caveats");
   lines.push("");
-  lines.push("- Offline fixture mode is deterministic and cost-safe; use `npm run eval:live` to refresh provider outputs.");
-  lines.push("- The first calibration set is intentionally compact; widen the corpus before using the number as a formal product claim.");
+  lines.push("- Offline fixture mode is deterministic and cost-safe but SYNTHETIC: its numbers are hand-authored to test plumbing, never a result. Use `npm run eval:live` for real metrics.");
+  lines.push("- The defensible headline is the calibrated judge's κ vs. humans + the baseline error rate it (independently of generation) catches.");
+  lines.push("- With only two providers a single judge can be independent of generation OR of repair, not both. When the eval judge equals the repair verifier, the post-repair number is self-consistency — set `EVAL_JUDGE_PROVIDER` to the non-repair provider (or add a 3rd model / human re-labeling) for an independent post-repair rate.");
+  lines.push("- The first calibration set is intentionally compact (50 cases); widen the corpus before using the number as a formal product claim.");
   lines.push("- Flagged questions are counted as removed, not shipped errors, matching the app's Phase 1 play/scoring behavior.");
   lines.push("");
   return lines.join("\n");
@@ -748,20 +840,30 @@ async function main(): Promise<void> {
   if (live && !liveVerifier) {
     throw new Error("Live eval requires HF_API_KEY or GEMINI_API_KEY for verifier selection");
   }
+  const evalJudge = live ? selectEvalJudge() : null;
   const sourceById = new Map(sources.map((s) => [s.id, s]));
-  const calibration = await runCalibration(live, liveVerifier, calibrationCases, sourceById);
+  // The eval judge (not the repair verifier) produces the numbers we report, so
+  // it is the model we calibrate against the human labels.
+  const calibration = await runCalibration(live, evalJudge, calibrationCases, sourceById);
   const benchmark = live
-    ? await runLiveBenchmark(sources, liveVerifier as VerifierInfo)
+    ? await runLiveBenchmark(sources, liveVerifier as VerifierInfo, evalJudge as VerifierInfo)
     : await runOfflineBenchmark(sources);
+
+  const postRepairIndependent =
+    live && !!evalJudge && !!liveVerifier && evalJudge.provider !== liveVerifier.provider;
 
   const report: EvalReport = {
     version: 1,
     config: {
       live,
+      synthetic: !live,
       generatedAt: live ? new Date().toISOString() : "offline-fixture-v1",
       generatorProvider: live ? process.env.LLM_PROVIDER ?? "hf" : "fixture",
-      verifierProvider: live ? (liveVerifier as VerifierInfo).provider : "fixture",
-      verifierModel: live ? (liveVerifier as VerifierInfo).model : "fixture-judge-v1",
+      repairVerifierProvider: live ? (liveVerifier as VerifierInfo).provider : "fixture",
+      repairVerifierModel: live ? (liveVerifier as VerifierInfo).model : "fixture-verifier-v1",
+      evalJudgeProvider: live ? (evalJudge as VerifierInfo).provider : "fixture",
+      evalJudgeModel: live ? (evalJudge as VerifierInfo).model : "fixture-judge-v1",
+      postRepairIndependent,
       promptHashes: {
         generator: hashText(SYSTEM_PROMPT),
         verifier: hashText(VERIFIER_SYSTEM_PROMPT),
@@ -778,13 +880,20 @@ async function main(): Promise<void> {
   await writeReports(report);
 
   console.log(`Quality Engine Phase 2 eval complete (${live ? "live" : "offline fixture"} mode).`);
+  if (report.config.synthetic) {
+    console.log("⚠️  SYNTHETIC fixture numbers — harness validation only, NOT measurements. Run `npm run eval:live` for real metrics.");
+  } else {
+    console.log(
+      `Eval judge: ${report.config.evalJudgeProvider}:${report.config.evalJudgeModel} | repair verifier: ${report.config.repairVerifierProvider}:${report.config.repairVerifierModel} | post-repair independent: ${report.config.postRepairIndependent}`
+    );
+  }
+  console.log(`Calibration kappa (eval judge vs humans): ${report.calibration.cohenKappa.toFixed(4)} (${report.calibration.status})`);
   console.log(
     `Baseline error rate: ${report.benchmark.baselineErrorRate.count}/${report.benchmark.baselineErrorRate.total} (${percentage(report.benchmark.baselineErrorRate.rate)})`
   );
   console.log(
-    `Post-repair shipped error rate: ${report.benchmark.postRepairShippedErrorRate.count}/${report.benchmark.postRepairShippedErrorRate.total} (${percentage(report.benchmark.postRepairShippedErrorRate.rate)})`
+    `Post-repair shipped error rate: ${report.benchmark.postRepairShippedErrorRate.count}/${report.benchmark.postRepairShippedErrorRate.total} (${percentage(report.benchmark.postRepairShippedErrorRate.rate)})${report.config.postRepairIndependent ? "" : " [self-consistency, not independent]"}`
   );
-  console.log(`Calibration kappa: ${report.calibration.cohenKappa.toFixed(4)} (${report.calibration.status})`);
   console.log("Reports written to eval/reports/phase2-latest.{json,md}");
 }
 

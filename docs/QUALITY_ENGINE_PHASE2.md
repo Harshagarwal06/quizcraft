@@ -35,6 +35,36 @@ the Phase 1 verifier:
 The labels intentionally cover clean questions, wrong answer keys, ungrounded
 claims, ambiguous/multiple-answer questions, and invalid distractors.
 
+## The eval judge vs. the repair verifier (independence)
+
+The numbers we report come from a **dedicated eval judge** that is kept separate
+from the model the repair loop uses, so we don't grade repairs with the same model
+that made them:
+
+- **Repair verifier** — the app's `selectVerifier()` model; it drives the repair
+  decisions (Phase 1 behaviour, unchanged).
+- **Eval judge** — selected by `selectEvalJudge()` (override with
+  `EVAL_JUDGE_PROVIDER`). It scores the baseline and re-judges shipped questions,
+  and it is the model we **calibrate against the human labels**. Default: the
+  cross-model provider opposite the generator — i.e. independent of *generation*,
+  which makes the **baseline error rate** credible.
+
+**Two-provider limitation (stated plainly):** with only HF + Gemini available, a
+single judge can be independent of *generation* **or** of *repair*, not both. So:
+
+- ✅ **Baseline error rate** is judged independently of the generator (cross-model)
+  — a strong, defensible number.
+- ⚠️ **Post-repair** "→ ~0%" is only an *independent* number when
+  `EVAL_JUDGE_PROVIDER` is set to the provider the repair loop did **not** use
+  (the report's `postRepairIndependent` flag records this). Otherwise it is the
+  same model judging questions it already approved — **self-consistency, not an
+  independent result** — and is labelled as such in the report.
+
+**The defensible headline** is therefore: the eval judge's **Cohen's κ vs. human
+labels** (credibility anchor) + the **baseline error rate** it catches. A fully
+independent post-repair error rate needs a third model or human re-labelling of
+shipped questions (future work).
+
 ## What The Eval Measures
 
 The runner reports calibration metrics for the judge:
@@ -67,32 +97,35 @@ writes generated reports to `eval/reports/phase2-latest.json` and
 `eval/reports/phase2-latest.md`; those report files are ignored because each run
 can regenerate them.
 
-Offline fixture mode currently demonstrates:
-
-- baseline error rate: 24/30
-- post-repair shipped-question error rate: 0/24
-- calibration kappa: 0.8369
-
-These numbers validate the harness and metric plumbing. They should not be
-presented as a broad product claim until the live run has been refreshed against
-the current providers and the dataset has been expanded.
+**Offline numbers are SYNTHETIC and must never be cited as results.** The baseline
+verdicts in `eval/fixtures/benchmark-fixtures.json` are hand-authored, and the
+offline "judge" simply echoes the human label back (with a few planted
+disagreements) to exercise the scoring math. The run therefore prints a
+prominent ⚠️ banner and sets `config.synthetic = true`. Offline mode exists only
+to validate plumbing (schema, dataset integrity, invariants) deterministically in
+CI/code review. **Real metrics require `npm run eval:live`.**
 
 ## Live Mode
 
 `npm run eval:live` uses the configured providers:
 
 - generator: `LLM_PROVIDER`
-- verifier: `VERIFIER_PROVIDER`, or the same cross-model selection used by Phase 1
+- repair verifier: `VERIFIER_PROVIDER`, or the same cross-model selection used by Phase 1
+- eval judge: `EVAL_JUDGE_PROVIDER`, or (default) the cross-model provider opposite
+  the generator — the model whose numbers are reported and calibrated
 
 Live mode reuses the existing generation, verification, and repair contracts. It
-regenerates quiz outputs, audits baseline questions, runs the bounded repair loop,
-and re-judges shipped questions after repair.
+regenerates quiz outputs, audits baseline questions **with the eval judge**, runs
+the bounded repair loop **with the repair verifier**, and re-judges shipped
+questions **with the eval judge** after repair.
 
 Required environment variables are the same as the app:
 
 - `HF_API_KEY` for HuggingFace
 - `GEMINI_API_KEY` for Gemini
 - optional `GEMINI_MODEL`
+- optional `EVAL_JUDGE_PROVIDER` = `hf` | `gemini` (set it to the provider the
+  repair loop does NOT use to get an independent post-repair number)
 
 ## Acceptance Criteria
 

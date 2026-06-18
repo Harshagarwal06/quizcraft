@@ -199,6 +199,9 @@ See `.env.example`. Key ones:
 - `LLM_PROVIDER` = `hf` | `gemini`
 - `VERIFIER_PROVIDER` (optional) = `hf` | `gemini` — Quality Engine judge;
   defaults to the provider opposite `LLM_PROVIDER` (cross-model)
+- `EVAL_JUDGE_PROVIDER` (optional) = `hf` | `gemini` — independent judge for the
+  Phase 2 eval harness (`npm run eval:live`); defaults to the provider opposite
+  `LLM_PROVIDER`. Not used by the running app.
 - `HF_API_KEY` (HuggingFace) / `GEMINI_API_KEY` + `GEMINI_MODEL` (Gemini)
 - `GEMINI_API_KEY` (optional; enables the topic-expansion pre-stage) +
   `GEMINI_MODEL` (optional, default `gemini-2.5-flash`)
