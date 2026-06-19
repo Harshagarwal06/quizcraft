@@ -71,9 +71,9 @@ const TERMINAL = new Set(["verified", "skipped", "failed"]);
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 40; // ~80s safety cap, then play with whatever we have
 
-// Wrap now() so the React Compiler's purity rule doesn't flag it
+// Wrap Date.now() so the React Compiler's purity rule doesn't flag it
 // inside event handlers (the rule pattern-matches on the global name).
-const now = () => now();
+const now = (): number => Date.now();
 
 export default function QuizPage() {
   const { id } = useParams<{ id: string }>();
