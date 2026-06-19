@@ -25,6 +25,7 @@ export default function NavBar() {
 
   const links = [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/quizzes", label: "Quizzes" },
     { href: "/generate", label: "Generate" },
   ];
 

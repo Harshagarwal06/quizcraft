@@ -71,10 +71,6 @@ const TERMINAL = new Set(["verified", "skipped", "failed"]);
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLLS = 40; // ~80s safety cap, then play with whatever we have
 
-function currentTimeMs() {
-  return Date.now();
-}
-
 export default function QuizPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -88,6 +84,7 @@ export default function QuizPage() {
   const [answers, setAnswers] = useState<AnswerEntry[]>([]);
   const [finalResults, setFinalResults] = useState<FinalResult[]>([]);
   const [finalScore, setFinalScore] = useState(0);
+  const [playError, setPlayError] = useState<string | null>(null);
   const questionStartMs = useRef<number>(0);
   const verifyTriggered = useRef(false);
 
@@ -105,7 +102,7 @@ export default function QuizPage() {
 
     const startPlaying = () => {
       setPhase("playing");
-      questionStartMs.current = currentTimeMs();
+      questionStartMs.current = Date.now();
     };
 
     const load = async () => {
@@ -148,51 +145,64 @@ export default function QuizPage() {
     if (!quiz || checkResult || checking) return;
     const q = quiz.questions[currentIdx];
     setChecking(true);
-    const timeMs = currentTimeMs() - questionStartMs.current;
+    setPlayError(null);
+    const timeMs = Date.now() - questionStartMs.current;
 
-    const res = await fetch(`/api/quizzes/${id}/check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ questionId: q.id, selectedOption: optionId }),
-    });
-
-    const result: CheckResult = await res.json();
-    setCheckResult(result);
-    setChecking(false);
-    setAnswers((prev) => [
-      ...prev,
-      {
-        questionId: q.id,
-        selectedOption: optionId,
-        isCorrect: result.isCorrect,
-        correctOption: result.correctOption,
-        explanation: result.explanation,
-        timeMs,
-      },
-    ]);
+    try {
+      const res = await fetch(`/api/quizzes/${id}/check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: q.id, selectedOption: optionId }),
+      });
+      if (!res.ok) throw new Error("check failed");
+      const result: CheckResult = await res.json();
+      setCheckResult(result);
+      setAnswers((prev) => [
+        ...prev,
+        {
+          questionId: q.id,
+          selectedOption: optionId,
+          isCorrect: result.isCorrect,
+          correctOption: result.correctOption,
+          explanation: result.explanation,
+          timeMs,
+        },
+      ]);
+    } catch {
+      setPlayError("Failed to check answer. Please try again.");
+    } finally {
+      setChecking(false);
+    }
   }
 
   const submitAll = useCallback(
     async (allAnswers: AnswerEntry[]) => {
       if (!quiz) return;
       setSubmitting(true);
-      const res = await fetch("/api/attempts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          quizId: quiz.id,
-          answers: allAnswers.map((a) => ({
-            questionId: a.questionId,
-            selectedOption: a.selectedOption,
-            timeMs: a.timeMs,
-          })),
-        }),
-      });
-      const data = await res.json();
-      setFinalResults(data.results);
-      setFinalScore(data.score);
-      setSubmitting(false);
-      setPhase("results");
+      setPlayError(null);
+      try {
+        const res = await fetch("/api/attempts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            quizId: quiz.id,
+            answers: allAnswers.map((a) => ({
+              questionId: a.questionId,
+              selectedOption: a.selectedOption,
+              timeMs: a.timeMs,
+            })),
+          }),
+        });
+        if (!res.ok) throw new Error("submit failed");
+        const data = await res.json();
+        setFinalResults(data.results);
+        setFinalScore(data.score);
+        setPhase("results");
+      } catch {
+        setPlayError("Failed to save results. Please try again.");
+      } finally {
+        setSubmitting(false);
+      }
     },
     [quiz]
   );
@@ -203,7 +213,8 @@ export default function QuizPage() {
     if (nextIdx < quiz.questions.length) {
       setCurrentIdx(nextIdx);
       setCheckResult(null);
-      questionStartMs.current = currentTimeMs();
+      setPlayError(null);
+      questionStartMs.current = Date.now();
     } else {
       submitAll(answers);
     }
@@ -388,6 +399,10 @@ export default function QuizPage() {
             </div>
           )}
         </div>
+
+        {playError && (
+          <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{playError}</p>
+        )}
 
         <div className="card p-6">
           <div className="mb-4 flex items-center gap-2">
