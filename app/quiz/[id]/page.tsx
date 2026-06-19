@@ -59,7 +59,7 @@ type FinalResult = {
   topic: string;
 };
 
-type Phase = "loading" | "verifying" | "playing" | "results" | "error";
+type Phase = "loading" | "playing" | "results" | "error";
 
 const difficultyColor: Record<string, string> = {
   easy: "bg-emerald-100 text-emerald-700",
@@ -88,9 +88,15 @@ export default function QuizPage() {
   const [answers, setAnswers] = useState<AnswerEntry[]>([]);
   const [finalResults, setFinalResults] = useState<FinalResult[]>([]);
   const [finalScore, setFinalScore] = useState(0);
+  // Denominator for the results screen comes from the server's scored count, not
+  // the load-time questionCount — background verification may remove a flagged
+  // question after play starts, which would otherwise skew the percentage.
+  const [finalTotal, setFinalTotal] = useState(0);
   const [playError, setPlayError] = useState<string | null>(null);
   const questionStartMs = useRef<number>(0);
   const verifyTriggered = useRef(false);
+  // Mirrors currentIdx for the background poll closure (which can't see state).
+  const currentIdxRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,13 +106,53 @@ export default function QuizPage() {
     const triggerVerify = () => {
       if (verifyTriggered.current) return;
       verifyTriggered.current = true;
-      // Fire-and-forget; the endpoint is idempotent (server-side lock).
+      // Fallback trigger — the generation route already fired this in the
+      // background; the endpoint is idempotent (server-side lock).
       fetch(`/api/quizzes/${id}/verify`, { method: "POST" }).catch(() => {});
     };
 
-    const startPlaying = () => {
-      setPhase("playing");
-      questionStartMs.current = now();
+    // Fold a fresh verification snapshot into the quiz being played WITHOUT
+    // disturbing the user's current position: update verdict badges by id, and
+    // drop only not-yet-reached questions that verification removed (flagged).
+    // A question the user has already reached stays put; if it was flagged it is
+    // simply excluded from scoring server-side.
+    const mergeVerification = (data: Quiz) => {
+      setQuiz((prev) => {
+        if (!prev) return data;
+        const byId = new Map(data.questions.map((vq) => [vq.id, vq]));
+        const idx = currentIdxRef.current;
+        const questions = prev.questions
+          .filter((pq, i) => i <= idx || byId.has(pq.id))
+          .map((pq) => {
+            const vq = byId.get(pq.id);
+            return vq ? { ...pq, verdict: vq.verdict } : pq;
+          });
+        return {
+          ...prev,
+          questions,
+          verificationStatus: data.verificationStatus,
+          verifierModel: data.verifierModel,
+          verificationSummary: data.verificationSummary,
+        };
+      });
+    };
+
+    // Background poll: surfaces verdict badges / flagged-removal as they land.
+    // Never blocks play and never sets an error — the player works regardless.
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const r = await fetch(`/api/quizzes/${id}`);
+        if (!r.ok) return;
+        const data: Quiz = await r.json();
+        if (cancelled) return;
+        mergeVerification(data);
+        if (TERMINAL.has(data.verificationStatus)) return; // settled — stop polling
+      } catch {
+        // transient — keep polling
+      }
+      if (cancelled || ++polls >= MAX_POLLS) return;
+      timer = setTimeout(poll, POLL_INTERVAL_MS);
     };
 
     const load = async () => {
@@ -117,22 +163,16 @@ export default function QuizPage() {
         if (cancelled) return;
         setQuiz(data);
 
-        if (TERMINAL.has(data.verificationStatus)) {
-          startPlaying();
-          return;
-        }
+        // Play immediately — verification runs concurrently in the background.
+        setPhase("playing");
+        questionStartMs.current = now();
 
-        // Still pending/verifying: kick off verification once, then poll.
-        if (data.verificationStatus === "pending" || data.verificationStatus === "failed") {
-          triggerVerify();
+        if (!TERMINAL.has(data.verificationStatus)) {
+          if (data.verificationStatus === "pending" || data.verificationStatus === "failed") {
+            triggerVerify();
+          }
+          timer = setTimeout(poll, POLL_INTERVAL_MS);
         }
-        setPhase("verifying");
-
-        if (++polls >= MAX_POLLS) {
-          startPlaying(); // safety valve — never trap the user on the spinner
-          return;
-        }
-        timer = setTimeout(load, POLL_INTERVAL_MS);
       } catch {
         if (!cancelled) setPhase("error");
       }
@@ -201,6 +241,7 @@ export default function QuizPage() {
         const data = await res.json();
         setFinalResults(data.results);
         setFinalScore(data.score);
+        setFinalTotal(data.total);
         setPhase("results");
       } catch {
         setPlayError("Failed to save results. Please try again.");
@@ -215,6 +256,7 @@ export default function QuizPage() {
     if (!quiz || !checkResult) return;
     const nextIdx = currentIdx + 1;
     if (nextIdx < quiz.questions.length) {
+      currentIdxRef.current = nextIdx;
       setCurrentIdx(nextIdx);
       setCheckResult(null);
       setPlayError(null);
@@ -228,30 +270,6 @@ export default function QuizPage() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="animate-pulse text-muted">Loading quiz…</p>
-      </div>
-    );
-  }
-
-  if (phase === "verifying") {
-    return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="card max-w-md p-8 text-center">
-          <div
-            className="mx-auto mb-5 grid h-14 w-14 animate-pulse place-items-center rounded-2xl text-white"
-            style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-          >
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 12l2 2 4-4" />
-              <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c1.66 0 3.22.45 4.56 1.24" />
-            </svg>
-          </div>
-          <h1 className="text-lg font-bold tracking-tight">Verifying quiz quality…</h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            An independent AI model is checking every question against your source —
-            confirming the answers are correct and fixing or removing any that aren&apos;t.
-          </p>
-          <p className="mt-4 animate-pulse text-xs text-muted">This usually takes ~20–40 seconds.</p>
-        </div>
       </div>
     );
   }
@@ -270,7 +288,7 @@ export default function QuizPage() {
   }
 
   if (phase === "results") {
-    const pct = Math.round((finalScore / quiz.questionCount) * 100);
+    const pct = finalTotal > 0 ? Math.round((finalScore / finalTotal) * 100) : 0;
     const tone =
       pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#f43f5e";
     return (
@@ -288,7 +306,7 @@ export default function QuizPage() {
               </div>
             </div>
             <p className="mt-4 text-sm text-muted">
-              {finalScore} of {quiz.questionCount} correct
+              {finalScore} of {finalTotal} correct
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <button onClick={() => router.push("/generate")} className="btn-primary">
@@ -382,6 +400,26 @@ export default function QuizPage() {
               style={{ width: `${progress}%`, backgroundImage: "linear-gradient(90deg, #6366f1, #8b5cf6)" }}
             />
           </div>
+
+          {(quiz.verificationStatus === "pending" ||
+            quiz.verificationStatus === "verifying") && (
+            <div className="mt-3 flex items-center gap-1.5 text-xs text-muted">
+              <svg
+                className="animate-spin"
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+              Checking answer quality in the background…
+            </div>
+          )}
 
           {quiz.verificationStatus === "verified" && quiz.verificationSummary && (
             <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">

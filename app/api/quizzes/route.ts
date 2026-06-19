@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 // Allow up to 60s — LLM generation can take 30-40s (Vercel default is shorter).
 export const maxDuration = 60;
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import { generateWithFallback } from "@/lib/llm";
@@ -134,7 +134,28 @@ export async function POST(req: NextRequest) {
       select: { id: true, title: true, questionCount: true },
     });
 
-    console.log(`[quizzes] done id=${quiz.id}`);
+    // Kick off cross-model verification immediately, in the background, in its
+    // OWN function invocation (the /verify route has its own 60s budget) so it
+    // overlaps with the user reading the first question instead of running as a
+    // blocking step after generation. We keep the generation function alive only
+    // long enough to deliver the trigger (~3s), not for the full verify; once the
+    // verify route receives the request it runs to completion independently. The
+    // player also fires this as a fallback — the verify route's lock is idempotent.
+    const verifyUrl = `${req.nextUrl.origin}/api/quizzes/${quiz.id}/verify`;
+    after(async () => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 3_000);
+      try {
+        await fetch(verifyUrl, { method: "POST", signal: ctrl.signal });
+      } catch {
+        // Aborted once the request was sent, or a transient network error — the
+        // verify route runs independently once received, and the player retries.
+      } finally {
+        clearTimeout(t);
+      }
+    });
+
+    console.log(`[quizzes] done id=${quiz.id} (verification triggered in background)`);
     return NextResponse.json(quiz, { status: 201 });
   } catch (err) {
     console.error(`[quizzes] generation failed (provider=${provider}):`, err);
