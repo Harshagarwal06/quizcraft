@@ -22,7 +22,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const quiz = await prisma.quiz.findFirst({
     where: { id, userId },
-    select: { id: true, groundingText: true, verificationStatus: true },
+    select: {
+      id: true,
+      purpose: true,
+      groundingText: true,
+      verificationStatus: true,
+    },
   });
   if (!quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
 
@@ -90,8 +95,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           options: JSON.stringify(rq.question.options),
           correctOption: rq.question.correctOptionId,
           explanation: rq.question.explanation,
-          difficulty: rq.question.difficulty,
-          topic: rq.question.topic,
+          // A regenerated review replacement must stay in its assigned concept
+          // and medium/hard slot even if the repair generator labels it loosely.
+          difficulty:
+            quiz.purpose === "review"
+              ? rows[i].difficulty
+              : rq.question.difficulty,
+          topic:
+            quiz.purpose === "review" ? rows[i].topic : rq.question.topic,
           verdict: rq.verdict,
           verificationDetail: JSON.stringify(rq.detail),
         },

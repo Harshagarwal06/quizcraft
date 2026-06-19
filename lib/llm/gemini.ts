@@ -1,5 +1,6 @@
 import { generatedQuizSchema, GeneratedQuiz, GenerationInput, QuizGenerator } from "./types";
-import { SYSTEM_PROMPT, buildUserMessage } from "./prompt";
+import { buildUserMessage, generationSystemPrompt } from "./prompt";
+import { validateReviewQuiz } from "./review";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 // Cap a single generation so the route's maxDuration (60s) isn't exceeded even
@@ -65,7 +66,7 @@ export class GeminiGenerator implements QuizGenerator {
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          systemInstruction: { parts: [{ text: generationSystemPrompt(input) }] },
           contents: [{ role: "user", parts: [{ text: buildUserMessage(input) }] }],
           generationConfig: {
             temperature: 0.4,
@@ -108,6 +109,9 @@ export class GeminiGenerator implements QuizGenerator {
         const parsed = generatedQuizSchema.safeParse(raw);
         if (!parsed.success) {
           throw new Error(`Schema validation failed: ${parsed.error.message}`);
+        }
+        if (input.review) {
+          return validateReviewQuiz(parsed.data, input.review.concepts);
         }
         parsed.data.questions = parsed.data.questions.slice(0, input.questionCount);
         return parsed.data;

@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "tsx --test tests/*.test.ts",
     "eval": "tsx eval/run.ts",
     "eval:live": "tsx eval/run.ts --live",
     "eval:check": "tsx eval/run.ts --check",

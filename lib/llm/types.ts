@@ -22,11 +22,20 @@ export const generatedQuizSchema = z.object({
 export type GeneratedQuestion = z.infer<typeof generatedQuestionSchema>;
 export type GeneratedQuiz = z.infer<typeof generatedQuizSchema>;
 
+export interface ReviewConceptInput {
+  key: string;
+  label: string;
+  recentStems: string[];
+}
+
 export interface GenerationInput {
   sourceText: string;
   userPrompt?: string;
   questionCount: number;
   seed: number;
+  review?: {
+    concepts: ReviewConceptInput[];
+  };
 }
 
 export interface QuizGenerator {

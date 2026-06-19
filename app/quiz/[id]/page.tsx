@@ -14,6 +14,7 @@ type Question = {
   topic: string;
   order: number;
   verdict: Verdict;
+  reviewConceptKey: string | null;
 };
 type VerificationSummary = {
   total: number;
@@ -25,10 +26,16 @@ type VerificationSummary = {
 type Quiz = {
   id: string;
   title: string;
+  purpose: "standard" | "review";
+  sourceQuizId: string | null;
   questionCount: number;
   verificationStatus: "pending" | "verifying" | "verified" | "skipped" | "failed";
   verifierModel: string | null;
   verificationSummary: VerificationSummary | null;
+  reviewReadiness: {
+    status: "preparing" | "ready" | "unavailable";
+    reason: string | null;
+  } | null;
   questions: Question[];
 };
 
@@ -59,7 +66,24 @@ type FinalResult = {
   topic: string;
 };
 
-type Phase = "loading" | "playing" | "results" | "error";
+type MasteryChange = {
+  conceptKey: string;
+  label: string;
+  previousStage: number;
+  stage: number;
+  status: "advanced" | "reset" | "progress" | "unchanged";
+  dueAt: string | null;
+  mastered: boolean;
+  consecutiveCorrect: number;
+};
+
+type Phase =
+  | "loading"
+  | "preparing"
+  | "playing"
+  | "results"
+  | "unavailable"
+  | "error";
 
 const difficultyColor: Record<string, string> = {
   easy: "bg-emerald-100 text-emerald-700",
@@ -92,6 +116,13 @@ export default function QuizPage() {
   // the load-time questionCount — background verification may remove a flagged
   // question after play starts, which would otherwise skew the percentage.
   const [finalTotal, setFinalTotal] = useState(0);
+  const [masteryChanges, setMasteryChanges] = useState<MasteryChange[]>([]);
+  const [canPracticeMistakes, setCanPracticeMistakes] = useState(false);
+  const [canContinueReview, setCanContinueReview] = useState(false);
+  const [nextDueAt, setNextDueAt] = useState<string | null>(null);
+  const [resultSourceQuizId, setResultSourceQuizId] = useState<string | null>(null);
+  const [reviewActionLoading, setReviewActionLoading] = useState(false);
+  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const [playError, setPlayError] = useState<string | null>(null);
   const questionStartMs = useRef<number>(0);
   const verifyTriggered = useRef(false);
@@ -146,7 +177,17 @@ export default function QuizPage() {
         if (!r.ok) return;
         const data: Quiz = await r.json();
         if (cancelled) return;
-        mergeVerification(data);
+        if (data.purpose === "review") {
+          setQuiz(data);
+          if (data.reviewReadiness?.status === "ready") {
+            setPhase("playing");
+            questionStartMs.current = now();
+          } else if (data.reviewReadiness?.status === "unavailable") {
+            setPhase("unavailable");
+          }
+        } else {
+          mergeVerification(data);
+        }
         if (TERMINAL.has(data.verificationStatus)) return; // settled — stop polling
       } catch {
         // transient — keep polling
@@ -163,9 +204,20 @@ export default function QuizPage() {
         if (cancelled) return;
         setQuiz(data);
 
-        // Play immediately — verification runs concurrently in the background.
-        setPhase("playing");
-        questionStartMs.current = now();
+        if (data.purpose === "review") {
+          if (data.reviewReadiness?.status === "ready") {
+            setPhase("playing");
+            questionStartMs.current = now();
+          } else if (data.reviewReadiness?.status === "unavailable") {
+            setPhase("unavailable");
+          } else {
+            setPhase("preparing");
+          }
+        } else {
+          // Standard quizzes play immediately while verification runs.
+          setPhase("playing");
+          questionStartMs.current = now();
+        }
 
         if (!TERMINAL.has(data.verificationStatus)) {
           if (data.verificationStatus === "pending" || data.verificationStatus === "failed") {
@@ -242,6 +294,11 @@ export default function QuizPage() {
         setFinalResults(data.results);
         setFinalScore(data.score);
         setFinalTotal(data.total);
+        setMasteryChanges(data.masteryChanges ?? []);
+        setCanPracticeMistakes(Boolean(data.canPracticeMistakes));
+        setCanContinueReview(Boolean(data.canContinueReview));
+        setNextDueAt(data.nextDueAt ?? null);
+        setResultSourceQuizId(data.sourceQuizId ?? null);
         setPhase("results");
       } catch {
         setPlayError("Failed to save results. Please try again.");
@@ -266,6 +323,53 @@ export default function QuizPage() {
     }
   }
 
+  async function createReview(sourceQuizId: string | null) {
+    if (!sourceQuizId || reviewActionLoading) return;
+    setReviewActionLoading(true);
+    setReviewActionError(null);
+    try {
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceQuizId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Couldn't prepare the review.");
+      }
+      router.push(`/quiz/${data.id}`);
+    } catch (error) {
+      setReviewActionError(
+        error instanceof Error ? error.message : "Couldn't prepare the review."
+      );
+    } finally {
+      setReviewActionLoading(false);
+    }
+  }
+
+  async function retryVerification() {
+    if (!quiz || reviewActionLoading) return;
+    setReviewActionLoading(true);
+    setReviewActionError(null);
+    setPhase("preparing");
+    try {
+      const response = await fetch(`/api/quizzes/${quiz.id}/verify`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error ?? "Verification failed again.");
+      }
+      window.location.reload();
+    } catch (error) {
+      setPhase("unavailable");
+      setReviewActionError(
+        error instanceof Error ? error.message : "Verification failed again."
+      );
+      setReviewActionLoading(false);
+    }
+  }
+
   if (phase === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -282,6 +386,64 @@ export default function QuizPage() {
           <Link href="/dashboard" className="btn-ghost">
             Back to dashboard
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "preparing") {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="card max-w-md p-8 text-center">
+          <div
+            className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-t-transparent"
+            style={{ borderColor: "var(--primary-soft)", borderTopColor: "var(--primary)" }}
+          />
+          <h1 className="text-xl font-bold">Preparing verified review</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Every question must pass the Quality Engine before it can change your
+            mastery schedule.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "unavailable") {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="card max-w-md p-8 text-center">
+          <h1 className="text-xl font-bold">Review needs another pass</h1>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            {quiz.reviewReadiness?.reason ??
+              "This review does not yet have a complete verified question pair."}
+          </p>
+          {reviewActionError && (
+            <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+              {reviewActionError}
+            </p>
+          )}
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            {quiz.verificationStatus === "failed" && (
+              <button
+                onClick={retryVerification}
+                disabled={reviewActionLoading}
+                className="btn-primary"
+              >
+                {reviewActionLoading ? "Retrying…" : "Retry verification"}
+              </button>
+            )}
+            <button
+              onClick={() => createReview(quiz.sourceQuizId)}
+              disabled={reviewActionLoading}
+              className="btn-ghost"
+            >
+              Generate fresh review
+            </button>
+            <Link href="/dashboard" className="btn-ghost">
+              Dashboard
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -308,10 +470,74 @@ export default function QuizPage() {
             <p className="mt-4 text-sm text-muted">
               {finalScore} of {finalTotal} correct
             </p>
+            {quiz.purpose === "review" && masteryChanges.length > 0 && (
+              <div className="mt-6 space-y-2 text-left">
+                {masteryChanges.map((change) => (
+                  <div
+                    key={change.conceptKey}
+                    className="rounded-xl px-4 py-3 text-sm"
+                    style={{ backgroundColor: "var(--surface-sunk)" }}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold">{change.label}</span>
+                      <span
+                        className={
+                          change.status === "advanced"
+                            ? "text-emerald-600"
+                            : change.status === "reset"
+                              ? "text-rose-600"
+                              : "text-muted"
+                        }
+                      >
+                        {change.mastered
+                          ? "Mastered"
+                          : change.status === "advanced"
+                            ? `Stage ${change.stage}`
+                            : change.status === "reset"
+                              ? "Review again"
+                              : `${change.consecutiveCorrect}/2 correct`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {quiz.purpose === "review" && nextDueAt && !canContinueReview && (
+              <p className="mt-4 text-sm text-muted">
+                Next review: {new Date(nextDueAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+            )}
+            {reviewActionError && (
+              <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                {reviewActionError}
+              </p>
+            )}
             <div className="mt-6 flex justify-center gap-3">
-              <button onClick={() => router.push("/generate")} className="btn-primary">
-                New quiz
-              </button>
+              {quiz.purpose === "standard" && canPracticeMistakes ? (
+                <button
+                  onClick={() => createReview(quiz.id)}
+                  disabled={reviewActionLoading}
+                  className="btn-primary"
+                >
+                  {reviewActionLoading ? "Preparing…" : "Practice my mistakes"}
+                </button>
+              ) : quiz.purpose === "review" && canContinueReview ? (
+                <button
+                  onClick={() => createReview(resultSourceQuizId)}
+                  disabled={reviewActionLoading}
+                  className="btn-primary"
+                >
+                  {reviewActionLoading ? "Preparing…" : "Continue review"}
+                </button>
+              ) : (
+                <button onClick={() => router.push("/generate")} className="btn-primary">
+                  New quiz
+                </button>
+              )}
               <Link href="/dashboard" className="btn-ghost">
                 Dashboard
               </Link>

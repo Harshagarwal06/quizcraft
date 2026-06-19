@@ -173,7 +173,7 @@ export async function GET() {
   const userId = await getCurrentUserId();
 
   const quizzes = await prisma.quiz.findMany({
-    where: { userId },
+    where: { userId, purpose: "standard" },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

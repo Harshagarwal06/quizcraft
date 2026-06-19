@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
+import { playableReviewQuestions } from "@/lib/mastery";
 
 export async function GET(
   _req: NextRequest,
@@ -22,6 +23,7 @@ export async function GET(
           topic: true,
           order: true,
           verdict: true,
+          reviewConceptKey: true,
           // correctOption, explanation and verificationDetail are intentionally
           // excluded — verificationDetail would reveal the correct answer.
         },
@@ -33,8 +35,33 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Once verified, never serve a known-bad ("flagged") question to the learner.
-  const playable = quiz.questions.filter((q) => q.verdict !== "flagged");
+  const isReview = quiz.purpose === "review";
+  const reviewPlayable =
+    isReview && quiz.verificationStatus === "verified"
+      ? playableReviewQuestions(quiz.questions)
+      : [];
+  // Standard quizzes can begin before verification settles. Reviews are stricter:
+  // only complete two-question concept pairs with pass/repaired verdicts leave.
+  const playable = isReview
+    ? reviewPlayable
+    : quiz.questions.filter((q) => q.verdict !== "flagged");
+
+  const reviewReadiness = !isReview
+    ? null
+    : quiz.verificationStatus === "pending" ||
+        quiz.verificationStatus === "verifying"
+      ? { status: "preparing", reason: null }
+      : quiz.verificationStatus === "verified" && playable.length > 0
+        ? { status: "ready", reason: null }
+        : {
+            status: "unavailable",
+            reason:
+              quiz.verificationStatus === "verified"
+                ? "No concept has two verified questions. Generate a fresh review."
+                : quiz.verificationStatus === "failed"
+                  ? "Quality verification failed. Retry verification or generate a fresh review."
+                  : "Quality verification is unavailable for this review.",
+          };
 
   let summary: unknown = null;
   if (quiz.verificationSummary) {
@@ -48,10 +75,13 @@ export async function GET(
   return NextResponse.json({
     id: quiz.id,
     title: quiz.title,
+    purpose: quiz.purpose,
+    sourceQuizId: quiz.sourceQuizId,
     questionCount: playable.length,
     verificationStatus: quiz.verificationStatus,
     verifierModel: quiz.verifierModel,
     verificationSummary: summary,
+    reviewReadiness,
     questions: playable.map((q) => ({
       id: q.id,
       stem: q.stem,
@@ -60,6 +90,7 @@ export async function GET(
       order: q.order,
       // Only the trust-badge label leaves the server, never the reasons.
       verdict: q.verdict, // null (unverified) | "pass" | "repaired"
+      reviewConceptKey: q.reviewConceptKey,
       options: JSON.parse(q.options),
     })),
   });

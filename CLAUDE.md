@@ -67,12 +67,14 @@ app/
     attempts/route.ts            POST submit attempt (server-scored), GET history
     dashboard/route.ts           GET aggregated learning stats
     quality/route.ts             GET Quality-Engine stats (verdicts, repair/removal, provenance)
+    reviews/route.ts             POST generate a targeted verified mastery review
     auth/[...nextauth]/route.ts  NextAuth handlers (unused while auth is off)
     auth/signup/route.ts         credential signup (unused while auth is off)
 lib/
   db.ts            Prisma singleton + ensureSchema() self-provisioning
   schema.ts        idempotent DDL (mirrors the migration) for self-provisioning
   currentUser.ts   getCurrentUserId() — returns the shared guest user
+  mastery.ts       concept normalization, scheduling, and review validation
   auth.ts          NextAuth config (credentials + JWT)
   extract/index.ts extractText() for raw text or PDF buffers (pdf-parse)
   expand/index.ts  expandTopic() — Gemini topic → study-briefing pre-stage
@@ -118,6 +120,18 @@ expanded briefing.
 Final submission goes to `POST /api/attempts`, which **re-fetches the correct
 answers server-side and scores there** — never trust client-supplied
 correctness. The dashboard reads aggregates from `GET /api/dashboard`.
+
+### Mastery review flow
+
+Incorrect standard-quiz answers upsert a `ConceptReview` keyed by user + source
+quiz + normalized topic. `POST /api/reviews` selects up to three weakest/oldest
+due concepts and generates exactly one medium + one hard fresh question per
+concept from the original `groundingText`. Review quizzes never play while
+verification is pending: only complete two-question concept pairs with
+`pass|repaired` verdicts are served. Two consecutive correct review answers
+advance through 1/3/7/14/30-day intervals; a wrong answer resets the concept to
+stage 0, due immediately. Generated review quizzes use `purpose="review"` and are
+hidden from the normal quiz library.
 
 ### Quality Engine (verification + repair) — async, cross-model
 

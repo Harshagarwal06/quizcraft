@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import NavBar from "@/app/components/NavBar";
 import {
   LineChart,
@@ -23,6 +24,21 @@ type DashboardData = {
   accuracyOverTime: { date: string; accuracy: number; quizTitle: string }[];
   byDifficulty: { difficulty: string; accuracy: number; total: number }[];
   byTopic: { topic: string; accuracy: number; total: number }[];
+  mastery: {
+    dueCount: number;
+    activeCount: number;
+    masteredCount: number;
+    reviewGroups: {
+      sourceQuizId: string;
+      quizTitle: string;
+      concepts: {
+        conceptKey: string;
+        label: string;
+        stage: number;
+        dueAt: string | null;
+      }[];
+    }[];
+  };
 };
 
 type QualityData = {
@@ -51,9 +67,12 @@ const difficultyColor: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [quality, setQuality] = useState<QualityData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/dashboard")
@@ -67,6 +86,12 @@ export default function DashboardPage() {
           accuracyOverTime: [],
           byDifficulty: [],
           byTopic: [],
+          mastery: {
+            dueCount: 0,
+            activeCount: 0,
+            masteredCount: 0,
+            reviewGroups: [],
+          },
         })
       )
       .finally(() => setLoading(false));
@@ -93,6 +118,29 @@ export default function DashboardPage() {
 
   const hasData = data.totalAttempts > 0;
 
+  async function startReview(sourceQuizId: string) {
+    if (reviewLoadingId) return;
+    setReviewLoadingId(sourceQuizId);
+    setReviewError(null);
+    try {
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceQuizId }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error ?? "Couldn't prepare the review.");
+      }
+      router.push(`/quiz/${result.id}`);
+    } catch (error) {
+      setReviewError(
+        error instanceof Error ? error.message : "Couldn't prepare the review."
+      );
+      setReviewLoadingId(null);
+    }
+  }
+
   return (
     <>
       <NavBar />
@@ -106,6 +154,91 @@ export default function DashboardPage() {
             + New quiz
           </Link>
         </div>
+
+        <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            {
+              label: "Due now",
+              value: data.mastery.dueCount,
+              color: data.mastery.dueCount > 0 ? "#f43f5e" : "var(--foreground)",
+            },
+            {
+              label: "Active concepts",
+              value: data.mastery.activeCount,
+              color: "var(--primary)",
+            },
+            {
+              label: "Mastered",
+              value: data.mastery.masteredCount,
+              color: "#10b981",
+            },
+          ].map((card) => (
+            <div key={card.label} className="card p-5">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
+                {card.label}
+              </p>
+              <p className="text-3xl font-bold" style={{ color: card.color }}>
+                {card.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {data.mastery.reviewGroups.length > 0 && (
+          <section className="mb-8">
+            <div className="mb-4">
+              <h2 className="text-lg font-bold tracking-tight">Ready to review</h2>
+              <p className="mt-1 text-sm text-muted">
+                Fresh verified questions for your weakest due concepts.
+              </p>
+            </div>
+            {reviewError && (
+              <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+                {reviewError}
+              </p>
+            )}
+            <div className="space-y-3">
+              {data.mastery.reviewGroups.map((group) => (
+                <div
+                  key={group.sourceQuizId}
+                  className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <h3 className="font-semibold">{group.quizTitle}</h3>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {group.concepts.slice(0, 3).map((concept) => (
+                        <span
+                          key={concept.conceptKey}
+                          className="rounded-full px-2.5 py-1 text-xs font-medium"
+                          style={{
+                            backgroundColor: "var(--primary-soft)",
+                            color: "var(--primary)",
+                          }}
+                        >
+                          {concept.label} · stage {concept.stage}
+                        </span>
+                      ))}
+                      {group.concepts.length > 3 && (
+                        <span className="rounded-full px-2.5 py-1 text-xs text-muted">
+                          +{group.concepts.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => startReview(group.sourceQuizId)}
+                    disabled={Boolean(reviewLoadingId)}
+                    className="btn-primary shrink-0"
+                  >
+                    {reviewLoadingId === group.sourceQuizId
+                      ? "Preparing…"
+                      : `Review ${Math.min(group.concepts.length, 3)} concepts`}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Summary cards */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">

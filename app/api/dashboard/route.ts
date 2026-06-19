@@ -8,7 +8,20 @@ export async function GET() {
   } catch (err) {
     console.error("[dashboard] failed:", err);
     return NextResponse.json(
-      { overallAccuracy: 0, totalAttempts: 0, totalAnswered: 0, accuracyOverTime: [], byDifficulty: [], byTopic: [] },
+      {
+        overallAccuracy: 0,
+        totalAttempts: 0,
+        totalAnswered: 0,
+        accuracyOverTime: [],
+        byDifficulty: [],
+        byTopic: [],
+        mastery: {
+          dueCount: 0,
+          activeCount: 0,
+          masteredCount: 0,
+          reviewGroups: [],
+        },
+      },
       { status: 200 }
     );
   }
@@ -26,7 +39,7 @@ async function buildDashboard() {
 
   // Aggregate in the database (GROUP BY over a JOIN) instead of pulling every
   // answer record into memory — the result set stays tiny as the data grows.
-  const [attempts, byDifficultyRows, byTopicRows, totalsRows] = await Promise.all([
+  const [attempts, byDifficultyRows, byTopicRows, totalsRows, conceptReviews] = await Promise.all([
     prisma.attempt.findMany({
       where: { userId, completedAt: { not: null } },
       orderBy: { startedAt: "asc" },
@@ -63,6 +76,18 @@ async function buildDashboard() {
       FROM "AnswerRecord" ar
       JOIN "Attempt" a ON a."id" = ar."attemptId"
       WHERE a."userId" = ${userId}`,
+    prisma.conceptReview.findMany({
+      where: { userId },
+      orderBy: [{ stage: "asc" }, { dueAt: "asc" }, { createdAt: "asc" }],
+      select: {
+        sourceQuizId: true,
+        conceptKey: true,
+        label: true,
+        stage: true,
+        dueAt: true,
+        sourceQuiz: { select: { title: true } },
+      },
+    }),
   ]);
 
   // Accuracy over time (one point per attempt)
@@ -87,6 +112,38 @@ async function buildDashboard() {
   // Summary stats
   const totalAnswered = n(totalsRows[0]?.totalAnswered);
   const totalCorrect = n(totalsRows[0]?.totalCorrect);
+  const now = new Date();
+  const activeReviews = conceptReviews.filter((review) => review.stage < 6);
+  const dueReviews = activeReviews.filter(
+    (review) => review.dueAt && review.dueAt.getTime() <= now.getTime()
+  );
+  const reviewGroupsMap = new Map<
+    string,
+    {
+      sourceQuizId: string;
+      quizTitle: string;
+      concepts: {
+        conceptKey: string;
+        label: string;
+        stage: number;
+        dueAt: Date | null;
+      }[];
+    }
+  >();
+  for (const review of dueReviews) {
+    const group = reviewGroupsMap.get(review.sourceQuizId) ?? {
+      sourceQuizId: review.sourceQuizId,
+      quizTitle: review.sourceQuiz.title,
+      concepts: [],
+    };
+    group.concepts.push({
+      conceptKey: review.conceptKey,
+      label: review.label,
+      stage: review.stage,
+      dueAt: review.dueAt,
+    });
+    reviewGroupsMap.set(review.sourceQuizId, group);
+  }
 
   return NextResponse.json({
     overallAccuracy: pct(totalCorrect, totalAnswered),
@@ -95,5 +152,11 @@ async function buildDashboard() {
     accuracyOverTime,
     byDifficulty,
     byTopic,
+    mastery: {
+      dueCount: dueReviews.length,
+      activeCount: activeReviews.length,
+      masteredCount: conceptReviews.filter((review) => review.stage >= 6).length,
+      reviewGroups: [...reviewGroupsMap.values()],
+    },
   });
 }

@@ -47,6 +47,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     "sourceSummary" TEXT,
     "questionCount" INTEGER NOT NULL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "purpose" TEXT NOT NULL DEFAULT 'standard',
+    "sourceQuizId" TEXT,
     "groundingText" TEXT,
     "verificationStatus" TEXT NOT NULL DEFAULT 'pending',
     "verifiedAt" DATETIME,
@@ -67,6 +69,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     "difficulty" TEXT NOT NULL,
     "topic" TEXT NOT NULL,
     "order" INTEGER NOT NULL,
+    "reviewConceptKey" TEXT,
     "verdict" TEXT,
     "verificationDetail" TEXT,
     CONSTRAINT "Question_quizId_fkey" FOREIGN KEY ("quizId") REFERENCES "Quiz" ("id") ON DELETE CASCADE ON UPDATE CASCADE
@@ -92,11 +95,28 @@ export const SCHEMA_STATEMENTS: string[] = [
     CONSTRAINT "AnswerRecord_attemptId_fkey" FOREIGN KEY ("attemptId") REFERENCES "Attempt" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "AnswerRecord_questionId_fkey" FOREIGN KEY ("questionId") REFERENCES "Question" ("id") ON DELETE CASCADE ON UPDATE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS "ConceptReview" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "userId" TEXT NOT NULL,
+    "sourceQuizId" TEXT NOT NULL,
+    "conceptKey" TEXT NOT NULL,
+    "label" TEXT NOT NULL,
+    "stage" INTEGER NOT NULL DEFAULT 0,
+    "consecutiveCorrect" INTEGER NOT NULL DEFAULT 0,
+    "dueAt" DATETIME,
+    "lastReviewedAt" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "ConceptReview_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "ConceptReview_sourceQuizId_fkey" FOREIGN KEY ("sourceQuizId") REFERENCES "Quiz" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Account_provider_providerAccountId_key" ON "Account"("provider", "providerAccountId")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "Session_sessionToken_key" ON "Session"("sessionToken")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_token_key" ON "VerificationToken"("token")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "VerificationToken_identifier_token_key" ON "VerificationToken"("identifier", "token")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ConceptReview_userId_sourceQuizId_conceptKey_key" ON "ConceptReview"("userId", "sourceQuizId", "conceptKey")`,
+  `CREATE INDEX IF NOT EXISTS "ConceptReview_userId_dueAt_idx" ON "ConceptReview"("userId", "dueAt")`,
 ];
 
 // Columns added after the initial tables shipped. SQLite has no
@@ -114,4 +134,7 @@ export const ADDITIVE_COLUMNS: string[] = [
   `ALTER TABLE "Quiz" ADD COLUMN "generatorModel" TEXT`,
   `ALTER TABLE "Quiz" ADD COLUMN "generatorPromptHash" TEXT`,
   `ALTER TABLE "Quiz" ADD COLUMN "verifierPromptHash" TEXT`,
+  `ALTER TABLE "Quiz" ADD COLUMN "purpose" TEXT NOT NULL DEFAULT 'standard'`,
+  `ALTER TABLE "Quiz" ADD COLUMN "sourceQuizId" TEXT`,
+  `ALTER TABLE "Question" ADD COLUMN "reviewConceptKey" TEXT`,
 ];

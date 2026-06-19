@@ -56,9 +56,43 @@ The JSON must match this exact shape:
   ]
 }`;
 
+export const REVIEW_SYSTEM_PROMPT = `${SYSTEM_PROMPT}
+
+MASTERY REVIEW MODE:
+- Create questions only for the exact target topics supplied by the learner.
+- Return exactly two questions for every target topic: one medium and one hard.
+- Copy each target topic label exactly into the question's "topic" field.
+- Test the same underlying concept using fresh reasoning and wording. Do not repeat or lightly paraphrase any listed previous stem.
+- Do not add easy questions or topics that were not requested.`;
+
+export function generationSystemPrompt(input: GenerationInput): string {
+  return input.review ? REVIEW_SYSTEM_PROMPT : SYSTEM_PROMPT;
+}
+
 export function buildUserMessage(input: GenerationInput): string {
   const lines: string[] = [];
-  lines.push(`Create exactly ${input.questionCount} multiple-choice questions.`);
+  if (input.review) {
+    lines.push(
+      `Create exactly ${input.questionCount} mastery-review multiple-choice questions.`
+    );
+    lines.push(
+      "For every target below, create exactly TWO fresh questions: one medium and one hard."
+    );
+    lines.push("Use each TARGET LABEL exactly as the question topic.");
+    for (const concept of input.review.concepts) {
+      lines.push("");
+      lines.push(`TARGET LABEL: ${concept.label}`);
+      lines.push(`TARGET KEY: ${concept.key}`);
+      if (concept.recentStems.length > 0) {
+        lines.push("DO NOT REPEAT OR PARAPHRASE THESE PREVIOUS STEMS:");
+        for (const stem of concept.recentStems.slice(0, 12)) {
+          lines.push(`- ${stem}`);
+        }
+      }
+    }
+  } else {
+    lines.push(`Create exactly ${input.questionCount} multiple-choice questions.`);
+  }
   if (input.userPrompt) {
     lines.push(`Special focus from the learner: ${input.userPrompt}`);
   }
@@ -77,5 +111,10 @@ export function buildUserMessage(input: GenerationInput): string {
 // quality can be attributed to a prompt version (and prompt drift detected in CI).
 export const GENERATOR_PROMPT_HASH = createHash("sha256")
   .update(SYSTEM_PROMPT)
+  .digest("hex")
+  .slice(0, 12);
+
+export const REVIEW_GENERATOR_PROMPT_HASH = createHash("sha256")
+  .update(REVIEW_SYSTEM_PROMPT)
   .digest("hex")
   .slice(0, 12);

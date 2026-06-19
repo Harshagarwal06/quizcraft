@@ -9,6 +9,7 @@
 - **Three input modes** — paste notes, upload a PDF, or just describe a topic.
 - **Smart generation** — an LLM produces MCQs with a balanced easy/medium/hard mix, plausible distractors, and an explanation for every question.
 - **Interactive player** — answer one question at a time with instant feedback and explanations, a progress bar, and a final score.
+- **Verified mastery reviews** — missed concepts become fresh, quality-checked medium/hard question pairs, then return on a 1/3/7/14/30-day schedule until mastered.
 - **Progress dashboard** — accuracy over time, performance by difficulty, and per-topic mastery (charts via Recharts).
 - **Accounts & persistence** — sign up, and your quizzes and attempts are saved across sessions.
 - **Provider-agnostic AI** — swap the model with one env var. Ships with **HuggingFace Qwen2.5-72B-Instruct** and **Google Gemini** implementations.

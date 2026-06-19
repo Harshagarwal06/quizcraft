@@ -1,5 +1,6 @@
 import { generatedQuizSchema, GeneratedQuiz, GenerationInput, QuizGenerator } from "./types";
-import { SYSTEM_PROMPT, buildUserMessage } from "./prompt";
+import { buildUserMessage, generationSystemPrompt } from "./prompt";
+import { validateReviewQuiz } from "./review";
 
 const HF_MODEL = "Qwen/Qwen2.5-72B-Instruct";
 // HuggingFace Inference Providers router (OpenAI-compatible)
@@ -146,7 +147,7 @@ export class HuggingFaceGenerator implements QuizGenerator {
         body: JSON.stringify({
           model: HF_MODEL,
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: generationSystemPrompt(input) },
             { role: "user", content: buildUserMessage(input) },
           ],
           // Scaled to the requested question count rather than the 8192 cap —
@@ -203,6 +204,9 @@ export class HuggingFaceGenerator implements QuizGenerator {
         const parsed = generatedQuizSchema.safeParse(raw);
         if (!parsed.success) {
           throw new Error(`Schema validation failed: ${parsed.error.message}`);
+        }
+        if (input.review) {
+          return validateReviewQuiz(parsed.data, input.review.concepts);
         }
         parsed.data.questions = parsed.data.questions.slice(0, input.questionCount);
         return parsed.data;
