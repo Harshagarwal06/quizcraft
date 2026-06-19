@@ -21,9 +21,9 @@ const sourceTypeLabel: Record<string, string> = {
 };
 
 const sourceTypeColor: Record<string, string> = {
-  pdf: "bg-rose-500/15 text-rose-300",
-  notes: "bg-sky-500/15 text-sky-300",
-  prompt: "bg-violet-500/15 text-violet-300",
+  pdf: "bg-rose-100 text-rose-700",
+  notes: "bg-sky-100 text-sky-700",
+  prompt: "bg-violet-100 text-violet-700",
 };
 
 function formatDate(iso: string): string {

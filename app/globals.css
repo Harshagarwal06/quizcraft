@@ -22,30 +22,30 @@
   --canvas: #f6f7fb;
 
   /* ---- Semantic status ---- */
-  --emerald-100: #d1fae5;
-  --emerald-500: #10b981; /* easy / correct */
+  --emerald-100: #ecfdf5;
+  --emerald-500: #34d399; /* easy / correct */
   --emerald-700: #047857;
-  --emerald-800: #065f46;
-  --emerald-bg: #ecfdf5;
-  --amber-100: #fef3c7;
-  --amber-500: #f59e0b; /* medium */
+  --emerald-800: #064e3b;
+  --emerald-bg: #f0fdf4;
+  --amber-100: #fffbeb;
+  --amber-500: #fbbf24; /* medium */
   --amber-700: #b45309;
-  --rose-100: #ffe4e6;
-  --rose-500: #f43f5e; /* hard / incorrect */
+  --rose-100: #fff1f2;
+  --rose-500: #fb7185; /* hard / incorrect */
   --rose-600: #e11d48;
   --rose-700: #be123c;
-  --rose-800: #9f1239;
+  --rose-800: #881337;
   --rose-bg: #fff1f2;
 
   /* ---- Semantic aliases ---- */
   --background: var(--canvas);
   --surface: #ffffff;
-  --surface-sunk: #f1f5f9;
-  --foreground: var(--slate-900);
-  --muted: var(--slate-500);
+  --surface-sunk: #f8f9fc;
+  --foreground: #1e293b;
+  --muted: #64748b;
   --text-muted: var(--muted);
-  --border: var(--slate-200);
-  --border-strong: var(--slate-300);
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
 
   --primary: var(--indigo-500);
   --primary-hover: var(--indigo-600);
@@ -81,14 +81,13 @@
   --dur-base: 150ms;
   --dur-slow: 500ms; /* progress + topic bars */
 
-  /* ---- App background wash (fixed indigo + violet radial blobs) ---- */
-  --bg-wash: radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.1), transparent 60%),
-    radial-gradient(900px 500px at -10% 10%, rgba(168, 85, 247, 0.08), transparent 55%);
+  /* ---- App background wash (fixed pastel radial blobs) ---- */
+  --bg-wash: radial-gradient(1200px 600px at 100% -10%, rgba(167, 139, 250, 0.08), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(129, 140, 248, 0.08), transparent 55%);
 
-  /* ---- Glass surfaces ---- */
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-blur: 12px;
+  /* ---- Soft surfaces ---- */
+  --glass-bg: #ffffff;
+  --glass-border: transparent;
 }
 
 @theme inline {
@@ -104,38 +103,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* ---- Dark theme: automatic (prefers-color-scheme) + opt-in [data-theme] ---- */
+/* ---- Dark theme removed (forced light theme) ---- */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --canvas: #0b1020;
-    --background: #0b1020;
-    --surface: #141a2e;
-    --surface-sunk: #1c2440;
-    --foreground: #e8ebf5;
-    --muted: #94a3b8;
-    --text-muted: #94a3b8;
-    --border: #25304d;
-    --border-strong: #334155;
-    --primary: var(--indigo-400);
-    --primary-hover: var(--indigo-500);
-    --primary-soft: color-mix(in srgb, var(--indigo-400) 20%, transparent);
-    --ring: rgba(129, 140, 248, 0.4);
-  }
-}
-:root[data-theme="dark"] {
-  --canvas: #0b1020;
-  --background: #0b1020;
-  --surface: #141a2e;
-  --surface-sunk: #1c2440;
-  --foreground: #e8ebf5;
-  --muted: #94a3b8;
-  --text-muted: #94a3b8;
-  --border: #25304d;
-  --border-strong: #334155;
-  --primary: var(--indigo-400);
-  --primary-hover: var(--indigo-500);
-  --primary-soft: color-mix(in srgb, var(--indigo-400) 20%, transparent);
-  --ring: rgba(129, 140, 248, 0.4);
+  /* Removed dark mode overrides to force light pastel theme */
 }
 
 body {
@@ -145,23 +115,7 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* ---- Subtle dot-grid background (dark mode only) ---- */
-@media (prefers-color-scheme: dark) {
-  body {
-    background-image:
-      radial-gradient(circle at center, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
-      var(--bg-wash);
-    background-size: 32px 32px, auto;
-    background-attachment: fixed;
-  }
-}
-:root[data-theme="dark"] body {
-  background-image:
-    radial-gradient(circle at center, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
-    var(--bg-wash);
-  background-size: 32px 32px, auto;
-  background-attachment: fixed;
-}
+/* ---- Subtle dot-grid background (removed for light theme) ---- */
 
 @layer components {
   .card {
@@ -233,13 +187,12 @@ body {
     color: var(--rose-700);
   }
 
-  /* ---- Glassmorphism card ---- */
+  /* ---- Soft white card (formerly glassmorphism) ---- */
   .glass-card {
     @apply rounded-2xl;
     background: var(--glass-bg);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+    border: 1px solid var(--border);
   }
 
   /* ---- Gradient text ---- */
@@ -254,6 +207,7 @@ body {
   .section-header {
     @apply text-lg font-bold tracking-tight;
     font-family: var(--font-jakarta), var(--font-geist-sans), system-ui, sans-serif;
+    color: var(--foreground);
   }
 }
 
@@ -263,34 +217,6 @@ body {
 }
 .animate-bar {
   animation: fillBar 0.8s var(--ease-out) forwards;
-}
-
-/* ---- Dark mode badge overrides ---- */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .badge-easy {
-    background: rgba(16, 185, 129, 0.15);
-    color: #6ee7b7;
-  }
-  :root:not([data-theme="light"]) .badge-medium {
-    background: rgba(245, 158, 11, 0.15);
-    color: #fcd34d;
-  }
-  :root:not([data-theme="light"]) .badge-hard {
-    background: rgba(244, 63, 94, 0.15);
-    color: #fda4af;
-  }
-}
-:root[data-theme="dark"] .badge-easy {
-  background: rgba(16, 185, 129, 0.15);
-  color: #6ee7b7;
-}
-:root[data-theme="dark"] .badge-medium {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fcd34d;
-}
-:root[data-theme="dark"] .badge-hard {
-  background: rgba(244, 63, 94, 0.15);
-  color: #fda4af;
 }
 
 .text-muted {

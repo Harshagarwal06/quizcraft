@@ -108,7 +108,7 @@ export default function GeneratePage() {
           {/* Tab selector */}
           <div
             className="grid grid-cols-3 gap-1 rounded-xl p-1"
-            style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
+            style={{ backgroundColor: "var(--surface-sunk)" }}
           >
             {tabs.map((t) => (
               <button
@@ -118,7 +118,7 @@ export default function GeneratePage() {
                 className="flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-all"
                 style={
                   tab === t.id
-                    ? { backgroundColor: "rgba(255,255,255,0.1)", color: "var(--primary)", boxShadow: "var(--shadow-sm)" }
+                    ? { backgroundColor: "var(--surface)", color: "var(--primary)", boxShadow: "var(--shadow-sm)" }
                     : { color: "var(--muted)" }
                 }
               >
@@ -150,7 +150,7 @@ export default function GeneratePage() {
               <div
                 onClick={() => fileRef.current?.click()}
                 className="cursor-pointer rounded-xl border-2 border-dashed p-10 text-center transition-colors"
-                style={{ borderColor: file ? "var(--primary)" : "rgba(148, 163, 184, 0.2)", backgroundColor: "rgba(255,255,255,0.02)" }}
+                style={{ borderColor: file ? "var(--primary)" : "rgba(148, 163, 184, 0.2)" }}
               >
                 <svg className="mx-auto mb-2" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" />
@@ -233,7 +233,7 @@ export default function GeneratePage() {
           </div>
 
           {error && (
-            <p className="rounded-lg px-3 py-2 text-sm" style={{ backgroundColor: 'rgba(244, 63, 94, 0.1)', color: '#fda4af' }}>{error}</p>
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>
           )}
 
           <button

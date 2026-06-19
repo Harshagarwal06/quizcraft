@@ -30,7 +30,7 @@ export default function NavBar() {
   ];
 
   return (
-    <header className="sticky top-0 z-30 border-b backdrop-blur-xl" style={{ borderColor: "var(--border)", background: "rgba(11, 16, 32, 0.75)" }}>
+    <header className="sticky top-0 z-30 border-b backdrop-blur-xl" style={{ borderColor: "var(--border)", backgroundColor: "rgba(255, 255, 255, 0.85)" }}>
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <BrandMark />
