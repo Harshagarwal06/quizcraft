@@ -84,6 +84,13 @@ The runner also reports benchmark metrics:
 - baseline error rate with Wilson 95% confidence interval
 - post-repair shipped-question error rate with Wilson 95% confidence interval
 - repair rate and removal rate
+- retrieval recall@3 against labeled supporting chunks
+- exact evidence-quote validity
+
+The evidence benchmark lives in `eval/datasets/evidence-retrieval.json`. The
+offline regression gate requires retrieval recall@3 of at least 90%. This gate
+must fail before embeddings or a vector database are introduced; BM25 remains
+the production default while it meets the labeled recall target.
 
 Flagged questions are counted as removed. They are not included in the
 post-repair shipped-error denominator, matching the app behavior that excludes

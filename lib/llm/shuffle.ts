@@ -30,8 +30,16 @@ export function shuffleQuizOptions(quiz: GeneratedQuiz): GeneratedQuiz {
       }));
       const newCorrectPos = perm.indexOf(correctIdx);
       const correctOptionId = newCorrectPos >= 0 ? IDS[newCorrectPos] : q.correctOptionId;
+      const optionExplanations = q.optionExplanations
+        ? Object.fromEntries(
+            perm.map((origIdx, newIdx) => [
+              IDS[newIdx],
+              q.optionExplanations?.[IDS[origIdx]] ?? "",
+            ])
+          ) as typeof q.optionExplanations
+        : undefined;
 
-      return { ...q, options, correctOptionId };
+      return { ...q, options, correctOptionId, optionExplanations };
     }),
   };
 }

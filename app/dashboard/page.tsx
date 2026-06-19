@@ -47,9 +47,22 @@ type QualityData = {
   initialErrorRate: number;
   repairRate: number;
   removalRate: number;
+  unverifiedRate: number;
   verdictDistribution: { pass: number; repaired: number; flagged: number; unverified: number };
   byVerifierModel: { model: string; checked: number; repaired: number; flagged: number }[];
   qualityOverTime: { date: string; checked: number; caught: number }[];
+  pipeline: {
+    firstBatchLatencyP50Ms: number;
+    firstBatchLatencyP95Ms: number;
+    fullQuizLatencyP50Ms: number;
+    fullQuizLatencyP95Ms: number;
+    citationCoverage: number;
+    verifierCompletionRate: number;
+    batchRetryRate: number;
+    batchFailureRate: number;
+    averageGeneratedQuestions: number;
+    averageRequestedQuestions: number;
+  };
 };
 
 // Verdict palette — verified (emerald) / repaired (indigo) / removed (rose)
@@ -420,6 +433,48 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {quality.pipeline.averageRequestedQuestions > 0 && (
+              <div className="card mt-6 p-6">
+                <h3 className="mb-4 text-sm font-semibold">
+                  Evidence pipeline
+                </h3>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  {[
+                    {
+                      label: "First batch p50",
+                      value: `${(quality.pipeline.firstBatchLatencyP50Ms / 1000).toFixed(1)}s`,
+                    },
+                    {
+                      label: "First batch p95",
+                      value: `${(quality.pipeline.firstBatchLatencyP95Ms / 1000).toFixed(1)}s`,
+                    },
+                    {
+                      label: "Citation coverage",
+                      value: `${quality.pipeline.citationCoverage}%`,
+                    },
+                    {
+                      label: "Verifier complete",
+                      value: `${quality.pipeline.verifierCompletionRate}%`,
+                    },
+                  ].map((metric) => (
+                    <div key={metric.label}>
+                      <p className="text-xs uppercase tracking-wide text-muted">
+                        {metric.label}
+                      </p>
+                      <p className="mt-1 text-xl font-bold">{metric.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs text-muted">
+                  {quality.pipeline.averageGeneratedQuestions} of{" "}
+                  {quality.pipeline.averageRequestedQuestions} requested questions
+                  generated on average · {quality.pipeline.batchRetryRate}% batch
+                  retry rate · {quality.pipeline.batchFailureRate}% batch failure
+                  rate
+                </p>
+              </div>
+            )}
 
             {quality.byVerifierModel.length > 0 && (
               <div className="card mt-6 p-6">

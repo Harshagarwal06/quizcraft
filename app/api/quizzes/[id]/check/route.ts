@@ -22,6 +22,7 @@ export async function POST(
       id: true,
       userId: true,
       purpose: true,
+      sourceDocumentId: true,
       verificationStatus: true,
       questions: {
         select: {
@@ -60,16 +61,77 @@ export async function POST(
   }
   const question = await prisma.question.findFirst({
     where: { id: questionId, quizId },
-    select: { correctOption: true, explanation: true },
+    select: {
+      correctOption: true,
+      explanation: true,
+      optionExplanations: true,
+      verdict: true,
+      evidenceStatus: true,
+      evidence: {
+        orderBy: { displayOrder: "asc" },
+        select: {
+          quote: true,
+          sourceChunk: {
+            select: {
+              pageStart: true,
+              pageEnd: true,
+              section: true,
+              sourceDocument: { select: { title: true, originUrl: true } },
+              references: {
+                include: { sourceReference: true },
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!question) {
     return NextResponse.json({ error: "Question not found" }, { status: 404 });
+  }
+  if (
+    quiz.sourceDocumentId &&
+    (!["pass", "repaired"].includes(question.verdict ?? "") ||
+      question.evidenceStatus !== "valid")
+  ) {
+    return NextResponse.json(
+      { error: "This question is not verified for play." },
+      { status: 409 }
+    );
   }
 
   return NextResponse.json({
     isCorrect: selectedOption === question.correctOption,
     correctOption: question.correctOption,
     explanation: question.explanation,
+    optionExplanations: question.optionExplanations
+      ? JSON.parse(question.optionExplanations)
+      : null,
+    evidence: question.evidence.flatMap((item) => {
+      const references = item.sourceChunk.references.map(
+        (entry) => entry.sourceReference
+      );
+      if (references.length === 0) {
+        return [
+          {
+            quote: item.quote,
+            sourceTitle: item.sourceChunk.sourceDocument.title,
+            pageStart: item.sourceChunk.pageStart,
+            pageEnd: item.sourceChunk.pageEnd,
+            section: item.sourceChunk.section,
+            url: item.sourceChunk.sourceDocument.originUrl,
+          },
+        ];
+      }
+      return references.map((reference) => ({
+        quote: item.quote,
+        sourceTitle: reference.title,
+        pageStart: item.sourceChunk.pageStart,
+        pageEnd: item.sourceChunk.pageEnd,
+        section: item.sourceChunk.section,
+        url: reference.url,
+      }));
+    }),
   });
 }

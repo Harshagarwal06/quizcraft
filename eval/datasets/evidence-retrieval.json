@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "photosynthesis-light",
+      "query": "chlorophyll blue red light absorption",
+      "seedChunkIds": [],
+      "expectedChunkIds": ["photo-p2"],
+      "quote": "Chlorophyll absorbs light most strongly in the blue and red regions.",
+      "quoteChunkId": "photo-p2",
+      "chunks": [
+        {
+          "id": "photo-p1",
+          "text": "The Calvin cycle occurs in the stroma and uses carbon dioxide, ATP, and NADPH.",
+          "pageStart": 1,
+          "section": null
+        },
+        {
+          "id": "photo-p2",
+          "text": "Chlorophyll absorbs light most strongly in the blue and red regions. Green light is largely reflected.",
+          "pageStart": 2,
+          "section": null
+        },
+        {
+          "id": "photo-p3",
+          "text": "Stomata permit carbon dioxide entry but can increase water loss.",
+          "pageStart": 3,
+          "section": null
+        }
+      ]
+    },
+    {
+      "id": "sql-index",
+      "query": "B-tree equality range query index",
+      "seedChunkIds": [],
+      "expectedChunkIds": ["sql-p3"],
+      "quote": "B-tree indexes are commonly used for equality lookups and range queries.",
+      "quoteChunkId": "sql-p3",
+      "chunks": [
+        {
+          "id": "sql-p1",
+          "text": "Transactions group database operations into an atomic unit.",
+          "pageStart": 1,
+          "section": null
+        },
+        {
+          "id": "sql-p2",
+          "text": "Normalization reduces duplicated data across relational tables.",
+          "pageStart": 2,
+          "section": null
+        },
+        {
+          "id": "sql-p3",
+          "text": "B-tree indexes are commonly used for equality lookups and range queries.",
+          "pageStart": 3,
+          "section": null
+        }
+      ]
+    },
+    {
+      "id": "glucose-hormones",
+      "query": "pancreatic alpha cells glucagon low blood glucose",
+      "seedChunkIds": [],
+      "expectedChunkIds": ["glucose-p4"],
+      "quote": "Alpha cells in the pancreas release glucagon when blood glucose falls.",
+      "quoteChunkId": "glucose-p4",
+      "chunks": [
+        {
+          "id": "glucose-p1",
+          "text": "Beta cells release insulin after blood glucose rises following a meal.",
+          "pageStart": 1,
+          "section": null
+        },
+        {
+          "id": "glucose-p4",
+          "text": "Alpha cells in the pancreas release glucagon when blood glucose falls. Glucagon promotes hepatic glucose release.",
+          "pageStart": 4,
+          "section": null
+        },
+        {
+          "id": "glucose-p5",
+          "text": "Type 1 diabetes results from autoimmune destruction of beta cells.",
+          "pageStart": 5,
+          "section": null
+        }
+      ]
+    },
+    {
+      "id": "http-validator",
+      "query": "ETag validator 304 Not Modified cached representation",
+      "seedChunkIds": [],
+      "expectedChunkIds": ["http-cache"],
+      "quote": "The server can return 304 Not Modified instead of the full body.",
+      "quoteChunkId": "http-cache",
+      "chunks": [
+        {
+          "id": "http-cookies",
+          "text": "Cookies store small values associated with a site.",
+          "pageStart": 1,
+          "section": "Cookies"
+        },
+        {
+          "id": "http-cache",
+          "text": "ETag is a validator for a cached representation. The server can return 304 Not Modified instead of the full body.",
+          "pageStart": 2,
+          "section": "Caching"
+        },
+        {
+          "id": "http-security",
+          "text": "Personalized responses require careful cache controls.",
+          "pageStart": 3,
+          "section": "Security"
+        }
+      ]
+    },
+    {
+      "id": "seed-retention",
+      "query": "mitosis chromosome separation spindle",
+      "seedChunkIds": ["cell-checkpoint"],
+      "expectedChunkIds": ["cell-checkpoint", "cell-spindle"],
+      "quote": "The spindle checkpoint delays chromosome separation.",
+      "quoteChunkId": "cell-spindle",
+      "chunks": [
+        {
+          "id": "cell-g1",
+          "text": "The G1 checkpoint checks nutrients and DNA damage.",
+          "pageStart": 1,
+          "section": null
+        },
+        {
+          "id": "cell-checkpoint",
+          "text": "Checkpoint signaling can pause the cycle so repair can occur.",
+          "pageStart": 2,
+          "section": null
+        },
+        {
+          "id": "cell-spindle",
+          "text": "The spindle checkpoint delays chromosome separation until chromosomes attach correctly.",
+          "pageStart": 3,
+          "section": null
+        },
+        {
+          "id": "cell-cyclin",
+          "text": "Cyclins activate cyclin-dependent kinases.",
+          "pageStart": 4,
+          "section": null
+        }
+      ]
+    }
+  ]
+}

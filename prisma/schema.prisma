@@ -23,6 +23,7 @@ model User {
   quizzes  Quiz[]
   attempts Attempt[]
   conceptReviews ConceptReview[]
+  sourceDocuments SourceDocument[]
 }
 
 model Account {
@@ -72,6 +73,11 @@ model Quiz {
   createdAt     DateTime @default(now())
   purpose       String   @default("standard") // "standard" | "review"
   sourceQuizId  String?  // original standard quiz for targeted review sessions
+  sourceDocumentId String?
+  generationStatus String @default("legacy") // legacy | preparing | first_batch_ready | complete | partial | failed
+  targetQuestionCount Int?
+  firstBatchReadyAt DateTime?
+  generationError String?
 
   // Quality-engine (verification) fields
   groundingText       String? // the material the generator saw (post-expansion), for the verifier
@@ -86,9 +92,13 @@ model Quiz {
   verifierPromptHash  String? // short sha256 of VERIFIER_SYSTEM_PROMPT at verify time
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceDocument SourceDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
   questions Question[]
   attempts  Attempt[]
   conceptReviews ConceptReview[]
+  blueprintItems QuizBlueprintItem[]
+  generationBatches QuizGenerationBatch[]
+  generationTraces GenerationTrace[]
 }
 
 model Question {
@@ -102,13 +112,159 @@ model Question {
   topic         String
   order         Int
   reviewConceptKey String?
+  blueprintItemId String? @unique
+  optionExplanations String?
+  evidenceStatus String @default("missing") // valid | missing | invalid
 
   // Quality-engine (verification) fields
   verdict            String? // null (unverified) | "pass" | "repaired" | "flagged"
   verificationDetail String? // JSON: { grounded, answerSupported, uniqueAnswer, distractorsValid, reasons[], initialVerdict, suggestedCorrectOptionId? }
 
   quiz          Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  blueprintItem QuizBlueprintItem? @relation(fields: [blueprintItemId], references: [id], onDelete: SetNull)
   answerRecords AnswerRecord[]
+  evidence QuestionEvidence[]
+}
+
+model SourceDocument {
+  id                 String   @id @default(cuid())
+  userId             String
+  kind               String   // pdf | notes | web
+  title              String
+  fullText           String
+  contentHash        String
+  originUrl          String?
+  extractionMetadata String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks     SourceChunk[]
+  references SourceReference[]
+  quizzes    Quiz[]
+
+  @@unique([userId, contentHash])
+}
+
+model SourceChunk {
+  id               String @id @default(cuid())
+  sourceDocumentId String
+  ordinal          Int
+  pageStart        Int?
+  pageEnd          Int?
+  section          String?
+  text             String
+  normalizedText   String
+  tokenCount       Int
+
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  references     ChunkReference[]
+  evidence       QuestionEvidence[]
+
+  @@unique([sourceDocumentId, ordinal])
+  @@index([sourceDocumentId])
+}
+
+model SourceReference {
+  id               String @id @default(cuid())
+  sourceDocumentId String
+  title            String
+  url              String
+  domain           String
+  authority        String // authoritative | established | rejected
+
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  chunks         ChunkReference[]
+
+  @@unique([sourceDocumentId, url])
+}
+
+model ChunkReference {
+  sourceChunkId    String
+  sourceReferenceId String
+
+  sourceChunk    SourceChunk    @relation(fields: [sourceChunkId], references: [id], onDelete: Cascade)
+  sourceReference SourceReference @relation(fields: [sourceReferenceId], references: [id], onDelete: Cascade)
+
+  @@id([sourceChunkId, sourceReferenceId])
+}
+
+model QuizBlueprintItem {
+  id             String @id @default(cuid())
+  quizId         String
+  slot           Int
+  conceptKey     String
+  topic          String
+  objective      String
+  difficulty     String
+  skillType      String
+  retrievalQuery String
+  requiredFacts  String
+  seedChunkIds   String
+  status         String @default("pending") // pending | generating | ready | failed
+  failureCode    String?
+  batchIndex     Int
+
+  quiz     Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  question Question?
+
+  @@unique([quizId, slot])
+  @@index([quizId, batchIndex])
+}
+
+model QuizGenerationBatch {
+  id           String   @id @default(cuid())
+  quizId       String
+  batchIndex   Int
+  status       String   @default("pending") // pending | generating | verifying | ready | failed
+  attemptCount Int      @default(0)
+  errorCode    String?
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, batchIndex])
+  @@index([quizId, status])
+}
+
+model QuestionEvidence {
+  id            String @id @default(cuid())
+  questionId    String
+  sourceChunkId String
+  quote         String
+  displayOrder  Int
+
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  sourceChunk SourceChunk @relation(fields: [sourceChunkId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, displayOrder])
+}
+
+model GenerationTrace {
+  id            String   @id @default(cuid())
+  quizId        String?
+  stage         String
+  batchIndex    Int?
+  provider      String?
+  model         String?
+  durationMs    Int
+  inputTokens   Int?
+  outputTokens  Int?
+  cacheTokens   Int?
+  questionCount Int?
+  retryCount    Int      @default(0)
+  status        String
+  errorCode     String?
+  createdAt     DateTime @default(now())
+
+  quiz Quiz? @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId, stage])
+  @@index([stage, createdAt])
 }
 
 model ConceptReview {

@@ -9,12 +9,12 @@ import { VERIFIER_SYSTEM_PROMPT, buildVerifierMessage } from "./prompt";
 import {
   AuditQuestion,
   QuestionVerdict,
-  verificationResultSchema,
+  providerVerificationResultSchema,
   VERDICT_RESPONSE_SCHEMA,
 } from "./types";
 
 const VERIFY_TIMEOUT_MS = 35_000;
-const TOKENS_PER_VERDICT = 200;
+const TOKENS_PER_VERDICT = 220;
 const VERDICT_OVERHEAD = 400;
 const MAX_OUTPUT_TOKENS = 8192;
 
@@ -35,45 +35,35 @@ function normalize(p?: string): VerifierProvider | undefined {
   return undefined;
 }
 
-/**
- * Choose the verifier provider. Default is cross-model (the provider OPPOSITE the
- * generator) so the judge is independent of the author. Overridable via
- * VERIFIER_PROVIDER. Falls back to the only available key (incl. same-model
- * self-check) and returns null if no verifier key exists at all.
- */
 export function selectVerifier(): VerifierInfo | null {
   const genNorm = normalize(process.env.LLM_PROVIDER) ?? "hf";
   const opposite: VerifierProvider = genNorm === "hf" ? "gemini" : "hf";
-  const hasHF = !!process.env.HF_API_KEY;
-  const hasGemini = !!process.env.GEMINI_API_KEY;
-
-  const prefs: VerifierProvider[] = [];
+  const hasHF = Boolean(process.env.HF_API_KEY);
+  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
+  const preferences: VerifierProvider[] = [];
   const explicit = normalize(process.env.VERIFIER_PROVIDER);
-  if (explicit) prefs.push(explicit);
-  prefs.push(opposite, genNorm);
+  if (explicit) preferences.push(explicit);
+  preferences.push(opposite, genNorm);
 
-  for (const p of prefs) {
-    if (p === "hf" && hasHF) return { provider: "hf", model: HF_MODEL_NAME };
-    if (p === "gemini" && hasGemini) return { provider: "gemini", model: geminiModelName() };
+  for (const provider of preferences) {
+    if (provider === "hf" && hasHF) {
+      return { provider: "hf", model: HF_MODEL_NAME };
+    }
+    if (provider === "gemini" && hasGemini) {
+      return { provider: "gemini", model: geminiModelName() };
+    }
   }
   return null;
 }
 
-/**
- * Audits `questions` against `material` with the chosen verifier. Always returns
- * exactly one verdict per question (aligned by index); if the model under-returns,
- * the missing slots get a lenient default so a question is never flagged merely
- * because the verifier forgot it.
- */
-export async function verifyQuestions(
+async function requestVerdicts(
   material: string,
   questions: AuditQuestion[],
   info: VerifierInfo,
-  timeoutMs: number = VERIFY_TIMEOUT_MS
+  timeoutMs: number
 ): Promise<QuestionVerdict[]> {
   const user = buildVerifierMessage(material, questions);
   const maxTokens = maxTokensFor(questions.length);
-
   let raw: unknown;
   if (info.provider === "gemini") {
     const text = await callGeminiJSON({
@@ -86,34 +76,133 @@ export async function verifyQuestions(
     });
     raw = JSON.parse(text);
   } else {
-    const text = await callHFChat({ system: VERIFIER_SYSTEM_PROMPT, user, maxTokens, timeoutMs });
+    const text = await callHFChat({
+      system: VERIFIER_SYSTEM_PROMPT,
+      user,
+      maxTokens,
+      timeoutMs,
+    });
     raw = extractJsonLoose(text);
   }
-
-  const parsed = verificationResultSchema.safeParse(raw);
+  const parsed = providerVerificationResultSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Verifier schema validation failed: ${parsed.error.message}`);
   }
+  return parsed.data.verdicts;
+}
 
-  const byIndex = new Map<number, QuestionVerdict>();
-  parsed.data.verdicts.forEach((v, i) => {
-    const idx =
-      Number.isInteger(v.index) && v.index >= 0 && v.index < questions.length ? v.index : i;
-    if (!byIndex.has(idx)) byIndex.set(idx, { ...v, index: idx });
-  });
+export function reconcileVerdicts(
+  verdicts: QuestionVerdict[],
+  expectedCount: number
+): {
+  valid: Map<number, QuestionVerdict>;
+  affected: number[];
+} {
+  const valid = new Map<number, QuestionVerdict>();
+  const duplicates = new Set<number>();
+  for (const verdict of verdicts) {
+    if (
+      !Number.isInteger(verdict.index) ||
+      verdict.index < 0 ||
+      verdict.index >= expectedCount
+    ) {
+      continue;
+    }
+    if (valid.has(verdict.index)) {
+      duplicates.add(verdict.index);
+      valid.delete(verdict.index);
+    } else if (!duplicates.has(verdict.index)) {
+      valid.set(verdict.index, verdict);
+    }
+  }
+  const affected = Array.from({ length: expectedCount }, (_, index) => index).filter(
+    (index) => !valid.has(index)
+  );
+  return { valid, affected };
+}
 
-  return questions.map((q, i) => {
-    const v = byIndex.get(i);
-    if (v) return v;
-    // Lenient default for an absent verdict — treated as a pass downstream.
-    return {
-      index: i,
-      grounded: true,
-      answerSupported: true,
-      uniqueAnswer: true,
-      distractorsValid: true,
-      correctOptionId: q.correctOptionId,
-      reasons: ["verifier returned no verdict for this question"],
-    };
-  });
+function incompleteVerdict(
+  question: AuditQuestion,
+  index: number
+): QuestionVerdict {
+  return {
+    index,
+    grounded: false,
+    answerSupported: false,
+    uniqueAnswer: false,
+    distractorsValid: false,
+    evidenceValid: false,
+    correctOptionId: question.correctOptionId,
+    reasons: ["verifier did not return one unique verdict after retry"],
+    complete: false,
+  };
+}
+
+/**
+ * Fail-closed audit. Missing or duplicate indexes are retried once in a smaller
+ * request. Any slot still unresolved becomes an explicit incomplete verdict,
+ * which downstream code marks unverified rather than passing.
+ */
+export async function verifyQuestions(
+  material: string,
+  questions: AuditQuestion[],
+  info: VerifierInfo,
+  timeoutMs: number = VERIFY_TIMEOUT_MS
+): Promise<QuestionVerdict[]> {
+  let firstVerdicts: QuestionVerdict[];
+  let fullRequestRetried = false;
+  try {
+    firstVerdicts = await requestVerdicts(material, questions, info, timeoutMs);
+  } catch (error) {
+    const retryableFormatError =
+      error instanceof SyntaxError ||
+      (error instanceof Error &&
+        (error.message.startsWith("Verifier schema validation failed") ||
+          error.message.startsWith("Failed to parse JSON from model output")));
+    if (!retryableFormatError) {
+      console.warn("[verify] verifier request failed closed:", error);
+      return questions.map(incompleteVerdict);
+    }
+    console.warn("[verify] initial verdict request failed; retrying once:", error);
+    fullRequestRetried = true;
+    try {
+      firstVerdicts = await requestVerdicts(
+        material,
+        questions,
+        info,
+        Math.min(timeoutMs, 20_000)
+      );
+    } catch (retryError) {
+      console.warn("[verify] full verdict retry failed:", retryError);
+      return questions.map(incompleteVerdict);
+    }
+  }
+  const first = reconcileVerdicts(firstVerdicts, questions.length);
+  const results = new Map(first.valid);
+
+  if (first.affected.length > 0 && !fullRequestRetried) {
+    const retryQuestions = first.affected.map((index) => questions[index]);
+    try {
+      const retry = reconcileVerdicts(
+        await requestVerdicts(
+          material,
+          retryQuestions,
+          info,
+          Math.min(timeoutMs, 20_000)
+        ),
+        retryQuestions.length
+      );
+      for (const [localIndex, verdict] of retry.valid) {
+        const originalIndex = first.affected[localIndex];
+        results.set(originalIndex, { ...verdict, index: originalIndex });
+      }
+    } catch (error) {
+      console.warn("[verify] focused verdict retry failed:", error);
+    }
+  }
+
+  return questions.map(
+    (question, index) =>
+      results.get(index) ?? incompleteVerdict(question, index)
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import NavBar from "@/app/components/NavBar";
 
@@ -16,10 +16,21 @@ export default function GeneratePage() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loadingStage, setLoadingStage] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setInterval(
+      () => setLoadingStage((stage) => Math.min(stage + 1, 2)),
+      4500
+    );
+    return () => clearInterval(timer);
+  }, [loading]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setLoadingStage(0);
     setLoading(true);
     setError("");
 
@@ -236,7 +247,11 @@ export default function GeneratePage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
-                Generating your quiz…
+                {[
+                  "Preparing your source…",
+                  "Planning coverage…",
+                  "Creating the first verified questions…",
+                ][loadingStage]}
               </>
             ) : (
               "Generate quiz"

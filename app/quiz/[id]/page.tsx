@@ -22,6 +22,15 @@ type VerificationSummary = {
   failedInitial: number;
   repaired: number;
   flagged: number;
+  unverified?: number;
+};
+type Evidence = {
+  quote: string;
+  sourceTitle: string;
+  pageStart: number | null;
+  pageEnd: number | null;
+  section: string | null;
+  url: string | null;
 };
 type Quiz = {
   id: string;
@@ -36,6 +45,21 @@ type Quiz = {
     status: "preparing" | "ready" | "unavailable";
     reason: string | null;
   } | null;
+  evidenceAvailable: boolean;
+  generation: {
+    status:
+      | "legacy"
+      | "preparing"
+      | "first_batch_ready"
+      | "complete"
+      | "partial"
+      | "failed";
+    readyCount: number;
+    targetCount: number;
+    pendingBatchCount: number;
+    failedBatchCount: number;
+    hasMore: boolean;
+  };
   questions: Question[];
 };
 
@@ -43,6 +67,8 @@ type CheckResult = {
   isCorrect: boolean;
   correctOption: string;
   explanation: string;
+  optionExplanations: Record<string, string> | null;
+  evidence: Evidence[];
 };
 
 type AnswerEntry = {
@@ -51,6 +77,8 @@ type AnswerEntry = {
   isCorrect: boolean;
   correctOption: string;
   explanation: string;
+  optionExplanations?: Record<string, string> | null;
+  evidence?: Evidence[];
   timeMs: number;
 };
 
@@ -64,6 +92,8 @@ type FinalResult = {
   options: Option[];
   difficulty: string;
   topic: string;
+  optionExplanations?: Record<string, string> | null;
+  evidence?: Evidence[];
 };
 
 type MasteryChange = {
@@ -123,11 +153,62 @@ export default function QuizPage() {
   const [resultSourceQuizId, setResultSourceQuizId] = useState<string | null>(null);
   const [reviewActionLoading, setReviewActionLoading] = useState(false);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
   const [playError, setPlayError] = useState<string | null>(null);
   const questionStartMs = useRef<number>(0);
   const verifyTriggered = useRef(false);
+  const batchRequestInFlight = useRef(false);
   // Mirrors currentIdx for the background poll closure (which can't see state).
   const currentIdxRef = useRef(0);
+
+  const mergeQuizSnapshot = useCallback((data: Quiz) => {
+    setQuiz((previous) => {
+      if (!previous) return data;
+      if (data.evidenceAvailable) {
+        const questions = [...data.questions].sort((a, b) => a.order - b.order);
+        return { ...previous, ...data, questions };
+      }
+      const byId = new Map(data.questions.map((question) => [question.id, question]));
+      const index = currentIdxRef.current;
+      const questions = previous.questions
+        .filter((question, questionIndex) => questionIndex <= index || byId.has(question.id))
+        .map((question) => byId.get(question.id) ?? question);
+      return { ...previous, ...data, questions };
+    });
+  }, []);
+
+  const requestMoreBatches = useCallback(
+    async (retryFailed = false) => {
+      if (batchRequestInFlight.current) return;
+      batchRequestInFlight.current = true;
+      setBatchLoading(true);
+      setBatchError(null);
+      try {
+        const response = await fetch(`/api/quizzes/${id}/batches`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ retryFailed }),
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok && response.status !== 202) {
+          throw new Error(result?.error ?? "Couldn't prepare more questions.");
+        }
+        const snapshotResponse = await fetch(`/api/quizzes/${id}`);
+        if (snapshotResponse.ok) {
+          mergeQuizSnapshot((await snapshotResponse.json()) as Quiz);
+        }
+      } catch (error) {
+        setBatchError(
+          error instanceof Error ? error.message : "Couldn't prepare more questions."
+        );
+      } finally {
+        batchRequestInFlight.current = false;
+        setBatchLoading(false);
+      }
+    },
+    [id, mergeQuizSnapshot]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -142,34 +223,6 @@ export default function QuizPage() {
       fetch(`/api/quizzes/${id}/verify`, { method: "POST" }).catch(() => {});
     };
 
-    // Fold a fresh verification snapshot into the quiz being played WITHOUT
-    // disturbing the user's current position: update verdict badges by id, and
-    // drop only not-yet-reached questions that verification removed (flagged).
-    // A question the user has already reached stays put; if it was flagged it is
-    // simply excluded from scoring server-side.
-    const mergeVerification = (data: Quiz) => {
-      setQuiz((prev) => {
-        if (!prev) return data;
-        const byId = new Map(data.questions.map((vq) => [vq.id, vq]));
-        const idx = currentIdxRef.current;
-        const questions = prev.questions
-          .filter((pq, i) => i <= idx || byId.has(pq.id))
-          .map((pq) => {
-            const vq = byId.get(pq.id);
-            return vq ? { ...pq, verdict: vq.verdict } : pq;
-          });
-        return {
-          ...prev,
-          questions,
-          verificationStatus: data.verificationStatus,
-          verifierModel: data.verifierModel,
-          verificationSummary: data.verificationSummary,
-        };
-      });
-    };
-
-    // Background poll: surfaces verdict badges / flagged-removal as they land.
-    // Never blocks play and never sets an error — the player works regardless.
     const poll = async () => {
       if (cancelled) return;
       try {
@@ -177,18 +230,25 @@ export default function QuizPage() {
         if (!r.ok) return;
         const data: Quiz = await r.json();
         if (cancelled) return;
+        mergeQuizSnapshot(data);
         if (data.purpose === "review") {
-          setQuiz(data);
           if (data.reviewReadiness?.status === "ready") {
             setPhase("playing");
-            questionStartMs.current = now();
           } else if (data.reviewReadiness?.status === "unavailable") {
             setPhase("unavailable");
           }
-        } else {
-          mergeVerification(data);
         }
-        if (TERMINAL.has(data.verificationStatus)) return; // settled — stop polling
+        const keepPolling = data.evidenceAvailable
+          ? data.generation.hasMore || batchRequestInFlight.current
+          : !TERMINAL.has(data.verificationStatus);
+        if (
+          data.evidenceAvailable &&
+          data.generation.hasMore &&
+          !batchRequestInFlight.current
+        ) {
+          void requestMoreBatches();
+        }
+        if (!keepPolling) return;
       } catch {
         // transient — keep polling
       }
@@ -214,12 +274,16 @@ export default function QuizPage() {
             setPhase("preparing");
           }
         } else {
-          // Standard quizzes play immediately while verification runs.
           setPhase("playing");
           questionStartMs.current = now();
         }
 
-        if (!TERMINAL.has(data.verificationStatus)) {
+        if (data.evidenceAvailable) {
+          if (data.generation.hasMore) {
+            void requestMoreBatches();
+            timer = setTimeout(poll, POLL_INTERVAL_MS);
+          }
+        } else if (!TERMINAL.has(data.verificationStatus)) {
           if (data.verificationStatus === "pending" || data.verificationStatus === "failed") {
             triggerVerify();
           }
@@ -235,7 +299,7 @@ export default function QuizPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [id]);
+  }, [id, mergeQuizSnapshot, requestMoreBatches]);
 
   async function handleSelect(optionId: string) {
     if (!quiz || checkResult || checking) return;
@@ -261,6 +325,8 @@ export default function QuizPage() {
           isCorrect: result.isCorrect,
           correctOption: result.correctOption,
           explanation: result.explanation,
+          optionExplanations: result.optionExplanations,
+          evidence: result.evidence,
           timeMs,
         },
       ]);
@@ -291,7 +357,17 @@ export default function QuizPage() {
         });
         if (!res.ok) throw new Error("submit failed");
         const data = await res.json();
-        setFinalResults(data.results);
+        const evidenceByQuestion = new Map(
+          allAnswers.map((answer) => [answer.questionId, answer])
+        );
+        setFinalResults(
+          data.results.map((result: FinalResult) => ({
+            ...result,
+            optionExplanations:
+              evidenceByQuestion.get(result.questionId)?.optionExplanations,
+            evidence: evidenceByQuestion.get(result.questionId)?.evidence,
+          }))
+        );
         setFinalScore(data.score);
         setFinalTotal(data.total);
         setMasteryChanges(data.masteryChanges ?? []);
@@ -318,6 +394,8 @@ export default function QuizPage() {
       setCheckResult(null);
       setPlayError(null);
       questionStartMs.current = now();
+    } else if (quiz.evidenceAvailable && quiz.generation.hasMore) {
+      void requestMoreBatches();
     } else {
       submitAll(answers);
     }
@@ -589,6 +667,38 @@ export default function QuizPage() {
                 >
                   {r.explanation}
                 </p>
+                {r.evidence && r.evidence.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {r.evidence.map((evidence, evidenceIndex) => (
+                      <div
+                        key={`${r.questionId}-evidence-${evidenceIndex}`}
+                        className="rounded-lg border px-3 py-2 text-xs leading-relaxed"
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        <p>&ldquo;{evidence.quote}&rdquo;</p>
+                        <p className="mt-1 text-muted">
+                          {evidence.url ? (
+                            <a
+                              href={evidence.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-medium underline"
+                            >
+                              {evidence.sourceTitle}
+                            </a>
+                          ) : (
+                            evidence.sourceTitle
+                          )}
+                          {evidence.pageStart
+                            ? ` · page ${evidence.pageStart}`
+                            : evidence.section
+                              ? ` · ${evidence.section}`
+                              : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -666,11 +776,40 @@ export default function QuizPage() {
               )}
             </div>
           )}
+          {quiz.evidenceAvailable && (
+            <div className="mt-3 text-xs text-muted">
+              {quiz.generation.readyCount} of {quiz.generation.targetCount} verified
+              questions ready
+              {batchLoading ? " · preparing more…" : ""}
+            </div>
+          )}
         </div>
 
         {playError && (
           <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{playError}</p>
         )}
+        {batchError && (
+          <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+            {batchError}
+          </p>
+        )}
+        {quiz.evidenceAvailable &&
+          quiz.generation.failedBatchCount > 0 &&
+          !quiz.generation.hasMore && (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: "var(--border)" }}>
+              <span>
+                Some requested questions could not be verified. You can finish
+                this partial quiz or retry them.
+              </span>
+              <button
+                onClick={() => requestMoreBatches(true)}
+                disabled={batchLoading}
+                className="btn-ghost shrink-0"
+              >
+                Retry missing
+              </button>
+            </div>
+          )}
 
         <div className="card p-6">
           <div className="mb-4 flex items-center gap-2">
@@ -749,9 +888,64 @@ export default function QuizPage() {
               >
                 {checkResult.explanation}
               </p>
+              {checkResult.optionExplanations && (
+                <div className="space-y-1.5">
+                  {q.options.map((option) => (
+                    <div
+                      key={`why-${option.id}`}
+                      className="rounded-lg px-3 py-2 text-xs leading-relaxed"
+                      style={{ backgroundColor: "var(--surface-sunk)" }}
+                    >
+                      <span className="mr-1 font-semibold">{option.id}.</span>
+                      {checkResult.optionExplanations?.[option.id]}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {checkResult.evidence.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Supporting evidence
+                  </p>
+                  {checkResult.evidence.map((evidence, evidenceIndex) => (
+                    <div
+                      key={`${q.id}-support-${evidenceIndex}`}
+                      className="rounded-lg border px-3 py-2 text-xs leading-relaxed"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      <p>&ldquo;{evidence.quote}&rdquo;</p>
+                      <p className="mt-1 text-muted">
+                        {evidence.url ? (
+                          <a
+                            href={evidence.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium underline"
+                          >
+                            {evidence.sourceTitle}
+                          </a>
+                        ) : (
+                          evidence.sourceTitle
+                        )}
+                        {evidence.pageStart
+                          ? ` · page ${evidence.pageStart}`
+                          : evidence.section
+                            ? ` · ${evidence.section}`
+                            : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
               <button onClick={handleNext} disabled={submitting} className="btn-primary w-full">
                 {submitting
                   ? "Saving…"
+                  : currentIdx + 1 === quiz.questions.length &&
+                      quiz.evidenceAvailable &&
+                      quiz.generation.hasMore
+                    ? batchLoading
+                      ? "Preparing more verified questions…"
+                      : "Prepare more verified questions"
                   : currentIdx + 1 === quiz.questions.length
                   ? "Finish & see results"
                   : "Next question"}

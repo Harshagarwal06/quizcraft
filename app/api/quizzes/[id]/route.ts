@@ -24,9 +24,13 @@ export async function GET(
           order: true,
           verdict: true,
           reviewConceptKey: true,
+          evidenceStatus: true,
           // correctOption, explanation and verificationDetail are intentionally
           // excluded — verificationDetail would reveal the correct answer.
         },
+      },
+      generationBatches: {
+        select: { status: true },
       },
     },
   });
@@ -36,6 +40,7 @@ export async function GET(
   }
 
   const isReview = quiz.purpose === "review";
+  const evidenceAvailable = Boolean(quiz.sourceDocumentId);
   const reviewPlayable =
     isReview && quiz.verificationStatus === "verified"
       ? playableReviewQuestions(quiz.questions)
@@ -44,7 +49,18 @@ export async function GET(
   // only complete two-question concept pairs with pass/repaired verdicts leave.
   const playable = isReview
     ? reviewPlayable
-    : quiz.questions.filter((q) => q.verdict !== "flagged");
+    : quiz.questions.filter((q) =>
+        evidenceAvailable
+          ? (q.verdict === "pass" || q.verdict === "repaired") &&
+            q.evidenceStatus === "valid"
+          : q.verdict !== "flagged" && q.verdict !== "unverified"
+      );
+  const pendingBatchCount = quiz.generationBatches.filter((batch) =>
+    ["pending", "generating", "verifying"].includes(batch.status)
+  ).length;
+  const failedBatchCount = quiz.generationBatches.filter(
+    (batch) => batch.status === "failed"
+  ).length;
 
   const reviewReadiness = !isReview
     ? null
@@ -81,6 +97,15 @@ export async function GET(
     verificationStatus: quiz.verificationStatus,
     verifierModel: quiz.verifierModel,
     verificationSummary: summary,
+    evidenceAvailable,
+    generation: {
+      status: quiz.generationStatus,
+      readyCount: playable.length,
+      targetCount: quiz.targetQuestionCount ?? playable.length,
+      pendingBatchCount,
+      failedBatchCount,
+      hasMore: pendingBatchCount > 0,
+    },
     reviewReadiness,
     questions: playable.map((q) => ({
       id: q.id,

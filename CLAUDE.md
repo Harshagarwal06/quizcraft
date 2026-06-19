@@ -34,7 +34,8 @@ with `--live` / `--check` flags, datasets in `eval/datasets/`, fixtures in
 (prompt-hash drift + metric regression) on every PR. See
 `docs/QUALITY_ENGINE.md` / `docs/QUALITY_ENGINE_PHASE2.md`.
 
-There is **no test suite**. Verify changes with `npm run lint`, `npm run build`,
+Lightweight Node tests live in `tests/` and run through `npm test`. Verify
+changes with `npm test`, `npm run eval:check`, `npm run lint`, `npm run build`,
 and manual exercise of the relevant route/page.
 
 ## Tech stack
@@ -63,6 +64,7 @@ app/
     quizzes/route.ts             POST generate quiz, GET list
     quizzes/[id]/route.ts        GET quiz for play (answer key stripped)
     quizzes/[id]/check/route.ts  POST check a single answer
+    quizzes/[id]/batches/route.ts POST claim/generate the next evidence batch
     quizzes/[id]/verify/route.ts POST verify+repair quiz (Quality Engine)
     attempts/route.ts            POST submit attempt (server-scored), GET history
     dashboard/route.ts           GET aggregated learning stats
@@ -76,7 +78,9 @@ lib/
   currentUser.ts   getCurrentUserId() — returns the shared guest user
   mastery.ts       concept normalization, scheduling, and review validation
   auth.ts          NextAuth config (credentials + JWT)
-  extract/index.ts extractText() for raw text or PDF buffers (pdf-parse)
+  extract/index.ts structured page/section extraction for text or PDF buffers
+  source/          chunking, BM25/MMR retrieval, web grounding, persistence
+  pipeline/        evidence-first generation batches and generation traces
   expand/index.ts  expandTopic() — Gemini topic → study-briefing pre-stage
   llm/
     index.ts       getGenerator() — picks provider from LLM_PROVIDER
@@ -99,19 +103,23 @@ scripts/apply-migrations.mjs   db:deploy target (prefers TURSO_* env vars)
 
 ### Quiz generation flow
 
-`generate/page.tsx` → `POST /api/quizzes` → `extractText()` →
-**optional `expandTopic()`** → `getGenerator().generate()` → Zod-validate the LLM
-output → persist `Quiz` + `Question[]` → return `{ id }`. The client then
-navigates to `/quiz/[id]`.
+For new quizzes while `EVIDENCE_PIPELINE_ENABLED` is enabled:
 
-**Topic-expansion pre-stage** (`lib/expand/index.ts`): when `sourceType` is
-`"prompt"` **or** the extracted text is thin (< `THIN_INPUT_CHARS`, 500), the
-input is first sent to Google **Gemini** to produce a detailed, factual study
-briefing, which becomes the `sourceText` fed to the generator. This grounds the
-quiz in richer material. It is **best-effort with graceful fallback**: if
-`GEMINI_API_KEY` is unset, or Gemini errors/times out (20s cap), the raw input is
-used instead. `Quiz.sourceSummary` always stores the **original** input, not the
-expanded briefing.
+`generate/page.tsx` → `POST /api/quizzes` → structured extraction → persist
+`SourceDocument` + page/section-aware `SourceChunk[]` → validate a complete
+`QuizBlueprintItem[]` plan → local BM25/MMR retrieval → generate three questions
+from only their selected chunks → fail-closed evidence verification → return
+after the first batch is ready. The player calls the idempotent
+`POST /api/quizzes/[id]/batches` route to prepare at most two later batches in
+parallel and appends ready questions in blueprint order.
+
+Prompt-only quizzes first create a Gemini Google Search brief. The brief is
+accepted only with grounding metadata, at least two distinct source domains,
+and at least one authoritative source; otherwise the user is asked to upload
+notes or a PDF. External references and supported passages are persisted.
+
+Legacy quizzes remain playable and the old full-text path remains behind
+`EVIDENCE_PIPELINE_ENABLED=false` for rollout rollback only.
 
 ### Playing & scoring flow
 
@@ -135,7 +143,7 @@ hidden from the normal quiz library.
 
 ### Quality Engine (verification + repair) — async, cross-model
 
-After generation a quiz is persisted with `verificationStatus="pending"` and the
+Legacy generation persists a quiz with `verificationStatus="pending"` and the
 generator's input saved as `Quiz.groundingText`. Verification runs in a **separate
 request** (its own 60s budget — generation is already near its limit), triggered
 client-side by the player: `POST /api/quizzes/[id]/verify` (idempotent — an
@@ -151,6 +159,13 @@ questions are regenerated + re-verified (swap in if they pass, else
 `verdict="flagged"`); good ones are `pass`. Results: per-`Question` `verdict` +
 `verificationDetail` (JSON), and `Quiz.verificationSummary`/`verifierModel`/
 `verifiedAt`, status `verified`.
+
+For evidence-backed quizzes verification is synchronous per batch and
+fail-closed: each question must have exactly one complete verdict, direct
+evidence support, and one or two quotes that match its retrieved chunks. Missing
+or duplicate verdict indexes receive one focused retry, then become
+`unverified`; `unverified` and `flagged` questions are excluded from play,
+scoring, citations, mastery, and quality-checked counts.
 
 **Never leak the answer key:** the play `GET` returns only the `verdict` badge
 (pass/repaired) — never `verificationDetail` (it contains the correct option) —
@@ -229,8 +244,9 @@ See `.env.example`. Key ones:
   Phase 2 eval harness (`npm run eval:live`); defaults to the provider opposite
   `LLM_PROVIDER`. Not used by the running app.
 - `HF_API_KEY` (HuggingFace) / `GEMINI_API_KEY` + `GEMINI_MODEL` (Gemini)
-- `GEMINI_API_KEY` (optional; enables the topic-expansion pre-stage) +
-  `GEMINI_MODEL` (optional, default `gemini-2.5-flash`)
+- `EVIDENCE_PIPELINE_ENABLED` (default on) — new source/blueprint/batch pipeline
+- `WEB_GROUNDING_ENABLED` (default on) — prompt-only Gemini Search grounding
+- `TRUSTED_SOURCE_DOMAINS` — optional comma-separated authority additions
 - `NEXTAUTH_SECRET` / `AUTH_SECRET`, `NEXTAUTH_URL` / `AUTH_URL`,
   `AUTH_TRUST_HOST` (read even though auth is currently bypassed)
 

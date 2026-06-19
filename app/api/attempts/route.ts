@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
       id: true,
       purpose: true,
       sourceQuizId: true,
+      sourceDocumentId: true,
       verificationStatus: true,
     },
   });
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
       difficulty: true,
       topic: true,
       verdict: true,
+      evidenceStatus: true,
       order: true,
       reviewConceptKey: true,
     },
@@ -93,7 +95,16 @@ export async function POST(req: NextRequest) {
   const scoredAnswers: ScoredAnswer[] = [];
   for (const answer of answers) {
     const question = questionMap.get(answer.questionId);
-    if (!question || question.verdict === "flagged") continue;
+    if (!question || question.verdict === "flagged" || question.verdict === "unverified") {
+      continue;
+    }
+    if (
+      quiz.sourceDocumentId &&
+      (!["pass", "repaired"].includes(question.verdict ?? "") ||
+        question.evidenceStatus !== "valid")
+    ) {
+      continue;
+    }
     scoredAnswers.push({
       questionId: answer.questionId,
       selectedOption: answer.selectedOption,

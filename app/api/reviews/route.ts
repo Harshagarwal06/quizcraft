@@ -10,6 +10,7 @@ import { generateWithFallback } from "@/lib/llm";
 import { shuffleQuizOptions } from "@/lib/llm/shuffle";
 import { REVIEW_GENERATOR_PROMPT_HASH } from "@/lib/llm/prompt";
 import { HF_MODEL_NAME, geminiModelName } from "@/lib/llm/client";
+import { createEvidenceReviewQuiz } from "@/lib/pipeline/quiz-pipeline";
 
 const requestSchema = z.object({
   sourceQuizId: z.string().min(1),
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       sourceType: true,
       sourceSummary: true,
       groundingText: true,
+      sourceDocumentId: true,
     },
   });
   if (!source) {
@@ -92,6 +94,32 @@ export async function POST(req: NextRequest) {
       .map((question) => question.stem)
       .slice(0, 12),
   }));
+
+  if (
+    process.env.EVIDENCE_PIPELINE_ENABLED !== "false" &&
+    source.sourceDocumentId
+  ) {
+    try {
+      const review = await createEvidenceReviewQuiz({
+        userId,
+        sourceQuizId: source.id,
+        sourceDocumentId: source.sourceDocumentId,
+        sourceTitle: source.title,
+        sourceType: source.sourceType,
+        concepts: concepts.map((concept) => ({
+          key: concept.key,
+          label: concept.label,
+        })),
+      });
+      return NextResponse.json({ id: review.id }, { status: 201 });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return NextResponse.json(
+        { error: "Couldn't prepare the cited mastery review.", detail },
+        { status: 502 }
+      );
+    }
+  }
 
   try {
     const preferred = process.env.LLM_PROVIDER ?? "hf";

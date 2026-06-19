@@ -9,9 +9,22 @@ const EMPTY = {
   initialErrorRate: 0,
   repairRate: 0,
   removalRate: 0,
+  unverifiedRate: 0,
   verdictDistribution: { pass: 0, repaired: 0, flagged: 0, unverified: 0 },
   byVerifierModel: [] as { model: string; checked: number; repaired: number; flagged: number }[],
   qualityOverTime: [] as { date: string; checked: number; caught: number }[],
+  pipeline: {
+    firstBatchLatencyP50Ms: 0,
+    firstBatchLatencyP95Ms: 0,
+    fullQuizLatencyP50Ms: 0,
+    fullQuizLatencyP95Ms: 0,
+    citationCoverage: 0,
+    verifierCompletionRate: 0,
+    batchRetryRate: 0,
+    batchFailureRate: 0,
+    averageGeneratedQuestions: 0,
+    averageRequestedQuestions: 0,
+  },
 };
 
 export async function GET() {
@@ -24,9 +37,20 @@ export async function GET() {
 }
 
 type VerdictRow = { verdict: string | null; total: bigint | number };
-type Summary = { total?: number; failedInitial?: number; repaired?: number; flagged?: number };
+type Summary = {
+  total?: number;
+  failedInitial?: number;
+  repaired?: number;
+  flagged?: number;
+  unverified?: number;
+};
 const n = (v: bigint | number | null) => Number(v ?? 0);
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
+const percentile = (values: number[], value: number) => {
+  if (values.length === 0) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil(value * sorted.length) - 1)];
+};
 
 async function buildQuality() {
   const userId = await getCurrentUserId();
@@ -59,6 +83,7 @@ async function buildQuality() {
   let failedInitial = 0;
   let repaired = 0;
   let flagged = 0;
+  let unverified = 0;
   const byModel = new Map<string, { checked: number; repaired: number; flagged: number }>();
   const qualityOverTime: { date: string; checked: number; caught: number }[] = [];
 
@@ -73,11 +98,13 @@ async function buildQuality() {
     const fi = n(s.failedInitial ?? 0);
     const rp = n(s.repaired ?? 0);
     const fl = n(s.flagged ?? 0);
+    const uv = n(s.unverified ?? 0);
 
     questionsChecked += total;
     failedInitial += fi;
     repaired += rp;
     flagged += fl;
+    unverified += uv;
 
     const model = q.verifierModel ?? "unknown";
     const m = byModel.get(model) ?? { checked: 0, repaired: 0, flagged: 0 };
@@ -93,6 +120,48 @@ async function buildQuality() {
     });
   }
 
+  const pipelineQuizzes = await prisma.quiz.findMany({
+    where: { userId, sourceDocumentId: { not: null } },
+    select: {
+      createdAt: true,
+      firstBatchReadyAt: true,
+      questionCount: true,
+      targetQuestionCount: true,
+      generationBatches: {
+        select: { completedAt: true, attemptCount: true, status: true },
+      },
+      questions: {
+        select: { evidenceStatus: true, verdict: true },
+      },
+    },
+  });
+  const firstBatchLatencies = pipelineQuizzes
+    .filter((quiz) => quiz.firstBatchReadyAt)
+    .map(
+      (quiz) =>
+        (quiz.firstBatchReadyAt as Date).getTime() - quiz.createdAt.getTime()
+    );
+  const fullQuizLatencies = pipelineQuizzes.flatMap((quiz) => {
+    const completed = quiz.generationBatches
+      .map((batch) => batch.completedAt?.getTime() ?? 0)
+      .filter(Boolean);
+    return completed.length > 0
+      ? [Math.max(...completed) - quiz.createdAt.getTime()]
+      : [];
+  });
+  const pipelineQuestions = pipelineQuizzes.flatMap((quiz) => quiz.questions);
+  const pipelineBatches = pipelineQuizzes.flatMap(
+    (quiz) => quiz.generationBatches
+  );
+  const requestedTotal = pipelineQuizzes.reduce(
+    (sum, quiz) => sum + (quiz.targetQuestionCount ?? quiz.questionCount),
+    0
+  );
+  const generatedTotal = pipelineQuizzes.reduce(
+    (sum, quiz) => sum + quiz.questionCount,
+    0
+  );
+
   return NextResponse.json({
     quizzesVerified: verifiedQuizzes.length,
     questionsChecked,
@@ -100,8 +169,41 @@ async function buildQuality() {
     initialErrorRate: pct(failedInitial, questionsChecked),
     repairRate: pct(repaired, questionsChecked),
     removalRate: pct(flagged, questionsChecked),
+    unverifiedRate: pct(unverified, questionsChecked),
     verdictDistribution,
     byVerifierModel: [...byModel.entries()].map(([model, v]) => ({ model, ...v })),
     qualityOverTime,
+    pipeline: {
+      firstBatchLatencyP50Ms: percentile(firstBatchLatencies, 0.5),
+      firstBatchLatencyP95Ms: percentile(firstBatchLatencies, 0.95),
+      fullQuizLatencyP50Ms: percentile(fullQuizLatencies, 0.5),
+      fullQuizLatencyP95Ms: percentile(fullQuizLatencies, 0.95),
+      citationCoverage: pct(
+        pipelineQuestions.filter((question) => question.evidenceStatus === "valid")
+          .length,
+        pipelineQuestions.length
+      ),
+      verifierCompletionRate: pct(
+        pipelineQuestions.filter((question) => question.verdict !== "unverified")
+          .length,
+        pipelineQuestions.length
+      ),
+      batchRetryRate: pct(
+        pipelineBatches.filter((batch) => batch.attemptCount > 1).length,
+        pipelineBatches.length
+      ),
+      batchFailureRate: pct(
+        pipelineBatches.filter((batch) => batch.status === "failed").length,
+        pipelineBatches.length
+      ),
+      averageGeneratedQuestions:
+        pipelineQuizzes.length > 0
+          ? Math.round((generatedTotal / pipelineQuizzes.length) * 10) / 10
+          : 0,
+      averageRequestedQuestions:
+        pipelineQuizzes.length > 0
+          ? Math.round((requestedTotal / pipelineQuizzes.length) * 10) / 10
+          : 0,
+    },
   });
 }

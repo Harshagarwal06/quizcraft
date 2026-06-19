@@ -1,0 +1,234 @@
+import { z } from "zod";
+import { createHash } from "node:crypto";
+import type { GeneratedQuestion } from "@/lib/llm/types";
+import { generatedQuestionSchema } from "@/lib/llm/types";
+import { shuffleQuizOptions } from "@/lib/llm/shuffle";
+import { callStructuredWithFallback } from "@/lib/llm/structured";
+import { normalizeEvidenceText, quoteExistsInChunk } from "@/lib/source/chunk";
+import type { RetrievalChunk } from "@/lib/source/retrieval";
+
+const EVIDENCE_SYSTEM_PROMPT =
+  "You are a rigorous university exam writer. Return JSON only. Write one unambiguous MCQ per blueprint item, grounded exclusively in that item's evidence chunks. Every option needs a concise explanation and every question needs one or two exact support quotes.";
+
+export const EVIDENCE_GENERATOR_PROMPT_HASH = createHash("sha256")
+  .update(EVIDENCE_SYSTEM_PROMPT)
+  .digest("hex")
+  .slice(0, 12);
+
+export type EvidenceBlueprintItem = {
+  id: string;
+  slot: number;
+  topic: string;
+  objective: string;
+  difficulty: "easy" | "medium" | "hard";
+  skillType: string;
+  retrievalQuery: string;
+  requiredFacts: string[];
+  chunks: RetrievalChunk[];
+};
+
+const evidenceQuestionSchema = generatedQuestionSchema.extend({
+  blueprintItemId: z.string(),
+  optionExplanations: z.object({
+    A: z.string().min(2),
+    B: z.string().min(2),
+    C: z.string().min(2),
+    D: z.string().min(2),
+  }),
+  evidence: z
+    .array(
+      z.object({
+        chunkId: z.string(),
+        quote: z.string().min(12),
+      })
+    )
+    .min(1)
+    .max(2),
+});
+
+const batchSchema = z.object({
+  questions: z.array(evidenceQuestionSchema),
+});
+
+const RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    questions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          blueprintItemId: { type: "string" },
+          stem: { type: "string" },
+          options: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", enum: ["A", "B", "C", "D"] },
+                text: { type: "string" },
+              },
+              required: ["id", "text"],
+            },
+          },
+          correctOptionId: {
+            type: "string",
+            enum: ["A", "B", "C", "D"],
+          },
+          explanation: { type: "string" },
+          optionExplanations: {
+            type: "object",
+            properties: {
+              A: { type: "string" },
+              B: { type: "string" },
+              C: { type: "string" },
+              D: { type: "string" },
+            },
+            required: ["A", "B", "C", "D"],
+          },
+          difficulty: {
+            type: "string",
+            enum: ["easy", "medium", "hard"],
+          },
+          topic: { type: "string" },
+          evidence: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                chunkId: { type: "string" },
+                quote: { type: "string" },
+              },
+              required: ["chunkId", "quote"],
+            },
+          },
+        },
+        required: [
+          "blueprintItemId",
+          "stem",
+          "options",
+          "correctOptionId",
+          "explanation",
+          "optionExplanations",
+          "difficulty",
+          "topic",
+          "evidence",
+        ],
+      },
+    },
+  },
+  required: ["questions"],
+};
+
+function buildBatchPrompt(items: EvidenceBlueprintItem[]): string {
+  const lines = [
+    `Create exactly ${items.length} multiple-choice questions, one for each blueprint item.`,
+    "Follow every blueprint item exactly. Use only its evidence chunks.",
+    "Evidence quotes must be copied verbatim from the named chunk.",
+    "Each distractor explanation must state the specific misconception or source conflict.",
+  ];
+  for (const item of items) {
+    lines.push(
+      "",
+      `BLUEPRINT ITEM ${item.id}`,
+      `Topic: ${item.topic}`,
+      `Difficulty: ${item.difficulty}`,
+      `Skill: ${item.skillType}`,
+      `Objective: ${item.objective}`,
+      `Required facts: ${item.requiredFacts.join("; ")}`,
+      "EVIDENCE CHUNKS:"
+    );
+    for (const chunk of item.chunks) {
+      lines.push(`--- CHUNK ${chunk.id} ---`, chunk.text);
+    }
+  }
+  return lines.join("\n");
+}
+
+export function validateGeneratedBatch(opts: {
+  raw: unknown;
+  items: EvidenceBlueprintItem[];
+  previousStems: string[];
+}): GeneratedQuestion[] {
+  const parsed = batchSchema.parse(opts.raw);
+  if (parsed.questions.length !== opts.items.length) {
+    throw new Error(
+      `Generated ${parsed.questions.length} questions for ${opts.items.length} blueprint items.`
+    );
+  }
+  const byId = new Map(opts.items.map((item) => [item.id, item]));
+  const seenItems = new Set<string>();
+  const seenStems = new Set(opts.previousStems.map(normalizeEvidenceText));
+
+  for (const question of parsed.questions) {
+    const item = byId.get(question.blueprintItemId);
+    if (!item || seenItems.has(question.blueprintItemId)) {
+      throw new Error("Generated questions contain an unknown or duplicate blueprint item.");
+    }
+    seenItems.add(question.blueprintItemId);
+    if (question.topic !== item.topic || question.difficulty !== item.difficulty) {
+      throw new Error("Generated question drifted from its blueprint topic or difficulty.");
+    }
+    const stem = normalizeEvidenceText(question.stem);
+    if (seenStems.has(stem)) {
+      throw new Error("Generated question repeats an existing stem.");
+    }
+    seenStems.add(stem);
+
+    const chunks = new Map(item.chunks.map((chunk) => [chunk.id, chunk]));
+    for (const evidence of question.evidence) {
+      const chunk = chunks.get(evidence.chunkId);
+      if (!chunk || !quoteExistsInChunk(evidence.quote, chunk.text)) {
+        throw new Error("Generated evidence does not match its source chunk.");
+      }
+    }
+  }
+
+  const shuffled = shuffleQuizOptions({
+    title: "Evidence batch",
+    questions: parsed.questions,
+  });
+  return shuffled.questions;
+}
+
+export async function generateEvidenceBatch(opts: {
+  items: EvidenceBlueprintItem[];
+  previousStems: string[];
+}): Promise<{
+  questions: GeneratedQuestion[];
+  provider: string;
+  model: string;
+  retryCount: number;
+}> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await callStructuredWithFallback({
+        system: EVIDENCE_SYSTEM_PROMPT,
+        user:
+          buildBatchPrompt(opts.items) +
+          (attempt > 0
+            ? "\nThe prior response failed validation. Preserve exact item IDs, topics, difficulties, quotes, and counts."
+            : ""),
+        schema: RESPONSE_SCHEMA,
+        maxTokens: 700 + opts.items.length * 700,
+        timeoutMs: 20_000,
+      });
+      return {
+        questions: validateGeneratedBatch({
+          raw: response.raw,
+          items: opts.items,
+          previousStems: opts.previousStems,
+        }),
+        provider: response.provider,
+        model: response.model,
+        retryCount: attempt,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Evidence question generation failed.");
+}

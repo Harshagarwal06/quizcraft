@@ -29,9 +29,10 @@ repair loop — i.e. "cut shipped error rate from X% to ~0 on played questions."
 - **Stack:** Next.js 16 (App Router, Turbopack) + React 19 + TypeScript (strict),
   Tailwind v4, Prisma 7 on the libSQL driver adapter (local SQLite file / remote
   Turso), Zod for request + LLM-output validation, Recharts for the dashboard.
-- **Generation flow:** `POST /api/quizzes` → extract text → optional **Gemini topic
-  expansion** (for bare prompts / thin input) → generate via the selected provider
-  → shuffle option positions → persist → return `{ id }`.
+- **Generation flow:** `POST /api/quizzes` → page/section-aware extraction →
+  source chunks → validated blueprint → local BM25/MMR retrieval → generate and
+  verify a three-question batch against cited chunks → return when the first
+  batch is playable. Later batches are claimed through an idempotent API.
 - **Play & scoring:** `GET /api/quizzes/[id]` serves questions with the answer key
   stripped; per-answer feedback via `…/check`; final submit via `POST /api/attempts`
   is **scored server-side** (never trust the client). Dashboard aggregates via
@@ -90,6 +91,29 @@ tolerant of HF's loose JSON.
 **Key files:** `lib/llm/client.ts`, `lib/llm/verify/{types,prompt,index,repair}.ts`,
 `app/api/quizzes/[id]/verify/route.ts`; play/scoring/UI edits in
 `app/api/quizzes/[id]/route.ts`, `app/api/attempts/route.ts`, `app/quiz/[id]/page.tsx`.
+
+### 2.4 Evidence-first generation pipeline — **SHIPPED**
+
+- PDF pages and note sections are preserved in `SourceDocument` /
+  `SourceChunk`.
+- A validated blueprint fixes topic, objective, skill, difficulty, and seed
+  chunks before question generation.
+- Dependency-free BM25 plus MMR retrieves three compact evidence chunks per
+  blueprint slot; the full source is never sent to the batch generator.
+- Questions include option-specific rationales and one or two exact evidence
+  quotes. Quotes must normalize-match their persisted chunks.
+- Verification is fail-closed. Every index must receive one unique verdict;
+  unresolved indexes become `unverified`, never `pass`.
+- The first three verified questions unlock play. Later batches are generated
+  with idempotent DB locks and can fail partially without removing ready work.
+- Evidence is withheld from the play payload and revealed only by the
+  answer-check API.
+- Prompt-only quizzes require Gemini Search grounding with two domains and one
+  authoritative source. Existing quizzes remain evidence-free legacy quizzes.
+
+**Key files:** `lib/source/*`, `lib/llm/blueprint.ts`,
+`lib/pipeline/{evidence-generation,quiz-pipeline,trace}.ts`,
+`app/api/quizzes/[id]/batches/route.ts`.
 
 ---
 
@@ -163,6 +187,8 @@ this section will be filled with the live, calibrated κ + baseline error rate
 ### Explicitly out of scope (for now)
 - A durable job queue (QStash/Inngest) — client-triggered verification with an
   idempotent lock is sufficient for the generate-then-play flow.
+- Embeddings/vector storage — BM25 retrieval is gated by recall@3 evaluation
+  before additional infrastructure is justified.
 - Real auth — currently bypassed (shared guest user).
 
 ---
@@ -171,6 +197,8 @@ this section will be filled with the live, calibrated κ + baseline error rate
 
 - **Providers:** `LLM_PROVIDER` = `hf` | `gemini` (generator); `VERIFIER_PROVIDER`
   optional (defaults to the provider opposite `LLM_PROVIDER` for cross-model).
+- **Rollout flags:** `EVIDENCE_PIPELINE_ENABLED`, `WEB_GROUNDING_ENABLED`, and
+  optional `TRUSTED_SOURCE_DOMAINS`.
 - **Keys:** `HF_API_KEY`, `GEMINI_API_KEY` (+ optional `GEMINI_MODEL`). Gemini's key
   also powers topic expansion, so the whole app can run on one Gemini key.
 - **Prod recommendation:** set `LLM_PROVIDER=gemini`. The HF free router (Qwen-72B)
@@ -195,3 +223,4 @@ this section will be filled with the live, calibrated κ + baseline error rate
 | Quality Engine — Phase 1 (verifier + repair) | ✅ Shipped |
 | Phase 2 — eval harness + calibration + benchmark | ✅ Shipped |
 | Phase 3 — quality dashboard + regression gating + provenance | ✅ Shipped |
+| Evidence-first cited generation + progressive batches | ✅ Shipped |

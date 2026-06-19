@@ -14,6 +14,8 @@ import { VERIFIER_SYSTEM_PROMPT } from "../lib/llm/verify/prompt";
 import { questionVerdictSchema, type QuestionVerdict } from "../lib/llm/verify/types";
 import { verifyAndRepair, type Verdict } from "../lib/llm/verify/repair";
 import { HF_MODEL_NAME, geminiModelName } from "../lib/llm/client";
+import { retrieveChunks } from "../lib/source/retrieval";
+import { quoteExistsInChunk } from "../lib/source/chunk";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const reportsDir = path.join(root, "eval", "reports");
@@ -83,6 +85,28 @@ const benchmarkFixtureSchema = z.object({
 const benchmarkFixturesSchema = z.object({
   version: z.number().int(),
   quizzes: z.array(benchmarkFixtureSchema).min(1),
+});
+
+const retrievalDatasetSchema = z.object({
+  version: z.number().int(),
+  cases: z.array(
+    z.object({
+      id: z.string(),
+      query: z.string(),
+      seedChunkIds: z.array(z.string()).default([]),
+      expectedChunkIds: z.array(z.string()).min(1),
+      quote: z.string(),
+      quoteChunkId: z.string(),
+      chunks: z.array(
+        z.object({
+          id: z.string(),
+          text: z.string(),
+          pageStart: z.number().int().nullable(),
+          section: z.string().nullable(),
+        })
+      ),
+    })
+  ),
 });
 
 type EvalSource = z.infer<typeof evalSourceSchema>;
@@ -166,6 +190,17 @@ interface EvalReport {
     difficultyDistribution: Record<"easy" | "medium" | "hard", number>;
     sources: BenchmarkSourceResult[];
   };
+  evidencePipeline: {
+    retrievalRecallAt3: number;
+    evidenceQuoteValidity: number;
+    cases: {
+      id: string;
+      retrievedChunkIds: string[];
+      expectedChunkIds: string[];
+      recall: number;
+      quoteValid: boolean;
+    }[];
+  };
 }
 
 interface BenchmarkSourceResult {
@@ -240,7 +275,14 @@ function selectEvalJudge(): VerifierInfo {
 }
 
 function isPassingVerdict(v: Pick<QuestionVerdict, "grounded" | "answerSupported" | "uniqueAnswer" | "distractorsValid">): boolean {
-  return v.grounded && v.answerSupported && v.uniqueAnswer && v.distractorsValid;
+  return (
+    v.grounded &&
+    v.answerSupported &&
+    v.uniqueAnswer &&
+    v.distractorsValid &&
+    ("evidenceValid" in v ? v.evidenceValid !== false : true) &&
+    ("complete" in v ? v.complete !== false : true)
+  );
 }
 
 function isKeyFixable(q: GeneratedQuestion, v: QuestionVerdict): boolean {
@@ -261,8 +303,10 @@ function toQuestionVerdict(expected: ExpectedVerdict, index: number, reasons: st
     answerSupported: expected.answerSupported,
     uniqueAnswer: expected.uniqueAnswer,
     distractorsValid: expected.distractorsValid,
+    evidenceValid: true,
     correctOptionId: expected.correctOptionId,
     reasons,
+    complete: true,
   };
 }
 
@@ -293,6 +337,49 @@ function wilson(count: number, total: number): RateMetric {
 
 function round4(n: number): number {
   return Math.round(n * 10000) / 10000;
+}
+
+function runEvidencePipelineEval(
+  dataset: z.infer<typeof retrievalDatasetSchema>
+): EvalReport["evidencePipeline"] {
+  const cases = dataset.cases.map((item) => {
+    const chunks = item.chunks.map((chunk) => ({
+      ...chunk,
+      normalizedText: chunk.text,
+    }));
+    const retrievedChunkIds = retrieveChunks(
+      chunks,
+      item.query,
+      item.seedChunkIds,
+      3
+    ).map((chunk) => chunk.id);
+    const hits = item.expectedChunkIds.filter((id) =>
+      retrievedChunkIds.includes(id)
+    ).length;
+    const quoteChunk = item.chunks.find(
+      (chunk) => chunk.id === item.quoteChunkId
+    );
+    return {
+      id: item.id,
+      retrievedChunkIds,
+      expectedChunkIds: item.expectedChunkIds,
+      recall: hits / item.expectedChunkIds.length,
+      quoteValid: quoteChunk
+        ? quoteExistsInChunk(item.quote, quoteChunk.text)
+        : false,
+    };
+  });
+  return {
+    retrievalRecallAt3: round4(
+      cases.reduce((sum, item) => sum + item.recall, 0) /
+        Math.max(1, cases.length)
+    ),
+    evidenceQuoteValidity: round4(
+      cases.filter((item) => item.quoteValid).length /
+        Math.max(1, cases.length)
+    ),
+    cases,
+  };
 }
 
 function percentage(n: number): string {
@@ -518,7 +605,7 @@ function summarizeBenchmark(
     let sourceRepaired = 0;
     let sourceFlagged = 0;
     for (const r of input.repaired) {
-      if (r.verdict === "flagged") {
+      if (r.verdict === "flagged" || r.verdict === "unverified") {
         sourceFlagged++;
         flaggedCount++;
         continue;
@@ -640,7 +727,9 @@ async function runLiveBenchmark(
       deadline: Math.min(Date.now() + 120_000, runDeadline),
       seed: source.seed,
     });
-    const shipped = repairedResult.questions.filter((r) => r.verdict !== "flagged");
+    const shipped = repairedResult.questions.filter(
+      (r) => r.verdict !== "flagged" && r.verdict !== "unverified"
+    );
     // Shipped questions are re-judged by the eval judge — independent of repair
     // when EVAL_JUDGE_PROVIDER differs from the repair verifier.
     const postVerdicts = shipped.length
@@ -657,7 +746,7 @@ async function runLiveBenchmark(
 
     let postIndex = 0;
     const repaired: RepairedOfflineQuestion[] = repairedResult.questions.map((r, i) => {
-      if (r.verdict === "flagged") {
+      if (r.verdict === "flagged" || r.verdict === "unverified") {
         return { question: r.question, verdict: "flagged", baselineIndex: i, postVerdict: null };
       }
       const postVerdict = postVerdicts[postIndex++];
@@ -711,9 +800,19 @@ async function runCalibration(live: boolean, judge: VerifierInfo | null, cases: 
 
 function renderMarkdown(report: EvalReport): string {
   const b = report.benchmark;
+  const evidence = report.evidencePipeline;
   const c = report.calibration;
   const lines: string[] = [];
   lines.push("# Quality Engine Phase 2 Eval Report");
+  lines.push("");
+  lines.push("## Evidence pipeline");
+  lines.push("");
+  lines.push(
+    `- Retrieval recall@3: ${percentage(evidence.retrievalRecallAt3)}`
+  );
+  lines.push(
+    `- Exact evidence quote validity: ${percentage(evidence.evidenceQuoteValidity)}`
+  );
   lines.push("");
   if (report.config.synthetic) {
     lines.push(
@@ -830,6 +929,7 @@ const baselineSchema = z.object({
     promptHashes: z.object({ generator: z.string(), verifier: z.string() }),
     minCalibrationKappa: z.number(),
     minSchemaValidity: z.number(),
+    minRetrievalRecallAt3: z.number().default(0.9),
   }),
   live: z.object({
     minCalibrationKappa: z.number(),
@@ -871,6 +971,14 @@ async function checkAgainstBaseline(report: EvalReport): Promise<string[]> {
         `schema validity ${report.benchmark.schemaValidity.rate} < required ${baseline.offline.minSchemaValidity}`
       );
     }
+    if (
+      report.evidencePipeline.retrievalRecallAt3 <
+      baseline.offline.minRetrievalRecallAt3
+    ) {
+      failures.push(
+        `retrieval recall@3 ${report.evidencePipeline.retrievalRecallAt3} < required ${baseline.offline.minRetrievalRecallAt3}`
+      );
+    }
   }
   return failures;
 }
@@ -882,6 +990,10 @@ async function main(): Promise<void> {
   const calibrationDataset = await readJson(
     "eval/datasets/calibration-cases.json",
     calibrationDatasetSchema
+  );
+  const retrievalDataset = await readJson(
+    "eval/datasets/evidence-retrieval.json",
+    retrievalDatasetSchema
   );
   const sources = sourcesDataset.sources;
   const calibrationCases = calibrationDataset.cases;
@@ -922,6 +1034,7 @@ async function main(): Promise<void> {
     },
     calibration,
     benchmark,
+    evidencePipeline: runEvidencePipelineEval(retrievalDataset),
   };
 
   if (benchmark.postRepairShippedErrorRate.total + benchmark.removalRate.count !== benchmark.questionCount) {
@@ -941,6 +1054,9 @@ async function main(): Promise<void> {
   console.log(`Calibration kappa (eval judge vs humans): ${report.calibration.cohenKappa.toFixed(4)} (${report.calibration.status})`);
   console.log(
     `Baseline error rate: ${report.benchmark.baselineErrorRate.count}/${report.benchmark.baselineErrorRate.total} (${percentage(report.benchmark.baselineErrorRate.rate)})`
+  );
+  console.log(
+    `Evidence retrieval recall@3: ${percentage(report.evidencePipeline.retrievalRecallAt3)}`
   );
   console.log(
     `Post-repair shipped error rate: ${report.benchmark.postRepairShippedErrorRate.count}/${report.benchmark.postRepairShippedErrorRate.total} (${percentage(report.benchmark.postRepairShippedErrorRate.rate)})${report.config.postRepairIndependent ? "" : " [self-consistency, not independent]"}`

@@ -31,12 +31,25 @@ export const questionVerdictSchema = z.object({
   answerSupported: lenientBool, // is the marked-correct option actually correct?
   uniqueAnswer: lenientBool, // is exactly one option correct (no multiple/none)?
   distractorsValid: lenientBool, // are all three distractors actually incorrect?
+  evidenceValid: lenientBool.optional().default(true),
   correctOptionId: lenientOptionId, // which option the verifier believes is correct
   reasons: lenientReasons, // short justifications / failure notes
+  complete: z.boolean().optional().default(true),
 });
 
 export const verificationResultSchema = z.object({
   verdicts: z.array(questionVerdictSchema),
+});
+
+// Live provider responses are stricter than legacy checked-in fixtures:
+// evidenceValid must be explicitly present so an omitted field cannot default
+// to a pass in the fail-closed runtime verifier.
+export const providerVerificationResultSchema = z.object({
+  verdicts: z.array(
+    questionVerdictSchema.extend({
+      evidenceValid: lenientBool,
+    })
+  ),
 });
 
 export type QuestionVerdict = z.infer<typeof questionVerdictSchema>;
@@ -56,6 +69,7 @@ export const VERDICT_RESPONSE_SCHEMA = {
           answerSupported: { type: "boolean" },
           uniqueAnswer: { type: "boolean" },
           distractorsValid: { type: "boolean" },
+          evidenceValid: { type: "boolean" },
           correctOptionId: { type: "string", enum: ["A", "B", "C", "D"] },
           reasons: { type: "array", items: { type: "string" } },
         },
@@ -65,6 +79,7 @@ export const VERDICT_RESPONSE_SCHEMA = {
           "answerSupported",
           "uniqueAnswer",
           "distractorsValid",
+          "evidenceValid",
           "correctOptionId",
           "reasons",
         ],
@@ -79,4 +94,9 @@ export interface AuditQuestion {
   stem: string;
   options: { id: "A" | "B" | "C" | "D"; text: string }[];
   correctOptionId: "A" | "B" | "C" | "D";
+  evidence?: {
+    chunkId: string;
+    quote: string;
+    chunkText: string;
+  }[];
 }

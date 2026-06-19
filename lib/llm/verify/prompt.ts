@@ -15,12 +15,13 @@ For each question decide:
 - answerSupported: true only if the option marked as correct is actually correct according to the material.
 - uniqueAnswer: true only if EXACTLY ONE option is correct. If two or more options are defensibly correct, or none are, uniqueAnswer = false.
 - distractorsValid: true only if every option OTHER than the truly-correct one is clearly incorrect per the material.
+- evidenceValid: true only if every supplied evidence quote occurs in its chunk and directly supports the stem and marked answer. If no per-question evidence is supplied, use true.
 - correctOptionId: the option letter (A/B/C/D) that IS actually correct according to the material — even if it differs from the one marked correct. If you cannot determine a correct option from the material, repeat the marked one.
 - reasons: 1–2 short phrases explaining any "false" judgement (or "ok" if all pass). Be specific and terse.
 
 Be strict: if you are not sure the marked answer is correct and unique given ONLY the material, mark the relevant field false.
 
-OUTPUT: respond with ONE JSON object and nothing else: { "verdicts": [ { "index", "grounded", "answerSupported", "uniqueAnswer", "distractorsValid", "correctOptionId", "reasons" } ] }. Include one entry per question, in order, with "index" matching the question number shown.`;
+OUTPUT: respond with ONE JSON object and nothing else: { "verdicts": [ { "index", "grounded", "answerSupported", "uniqueAnswer", "distractorsValid", "evidenceValid", "correctOptionId", "reasons" } ] }. Include one entry per question, in order, with "index" matching the question number shown.`;
 
 export function buildVerifierMessage(material: string, questions: AuditQuestion[]): string {
   const lines: string[] = [];
@@ -39,6 +40,14 @@ export function buildVerifierMessage(material: string, questions: AuditQuestion[
       lines.push(`  ${o.id}. ${o.text}`);
     }
     lines.push(`  Marked correct: ${q.correctOptionId}`);
+    if (q.evidence?.length) {
+      lines.push("  PER-QUESTION EVIDENCE (use this instead of outside knowledge):");
+      for (const evidence of q.evidence) {
+        lines.push(`  Chunk ${evidence.chunkId}:`);
+        lines.push(`  Quote: "${evidence.quote}"`);
+        lines.push(`  Chunk text: """${evidence.chunkText}"""`);
+      }
+    }
     lines.push("");
   });
 

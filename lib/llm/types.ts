@@ -6,12 +6,31 @@ export const optionSchema = z.object({
 });
 
 export const generatedQuestionSchema = z.object({
+  blueprintItemId: z.string().optional(),
   stem: z.string(),
   options: z.array(optionSchema).length(4),
   correctOptionId: z.enum(["A", "B", "C", "D"]),
   explanation: z.string(),
+  optionExplanations: z
+    .object({
+      A: z.string(),
+      B: z.string(),
+      C: z.string(),
+      D: z.string(),
+    })
+    .optional(),
   difficulty: z.enum(["easy", "medium", "hard"]),
   topic: z.string(),
+  evidence: z
+    .array(
+      z.object({
+        chunkId: z.string(),
+        quote: z.string(),
+      })
+    )
+    .min(1)
+    .max(2)
+    .optional(),
 });
 
 export const generatedQuizSchema = z.object({

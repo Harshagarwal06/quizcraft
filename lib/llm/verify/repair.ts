@@ -8,7 +8,7 @@ import { AuditQuestion, QuestionVerdict } from "./types";
 // this much wall-clock time; skip it if the invocation budget is nearly spent.
 const REGEN_MIN_REMAINING_MS = 28_000;
 
-export type Verdict = "pass" | "repaired" | "flagged";
+export type Verdict = "pass" | "repaired" | "flagged" | "unverified";
 
 export interface VerificationDetail {
   grounded: boolean;
@@ -34,6 +34,7 @@ export interface RepairResult {
     failedInitial: number;
     repaired: number;
     flagged: number;
+    unverified: number;
   };
 }
 
@@ -44,13 +45,19 @@ const toAudit = (q: GeneratedQuestion): AuditQuestion => ({
 });
 
 const isPass = (v: QuestionVerdict): boolean =>
-  v.grounded && v.answerSupported && v.uniqueAnswer && v.distractorsValid;
+  v.complete !== false &&
+  v.grounded &&
+  v.answerSupported &&
+  v.uniqueAnswer &&
+  v.distractorsValid &&
+  v.evidenceValid;
 
 // A wrong answer KEY (but otherwise sound question) is the cheapest fix: the
 // stem is grounded, exactly one option is correct, the distractors are wrong —
 // only the marked letter is off. Just relabel the correct option.
 const isKeyFixable = (q: GeneratedQuestion, v: QuestionVerdict): boolean =>
   v.grounded &&
+  v.evidenceValid &&
   v.uniqueAnswer &&
   v.distractorsValid &&
   !v.answerSupported &&
@@ -94,6 +101,13 @@ export async function verifyAndRepair(opts: {
 
   const results: RepairedQuestion[] = questions.map((q, i) => {
     const v = verdicts[i];
+    if (v.complete === false) {
+      return {
+        question: q,
+        verdict: "unverified",
+        detail: detailFrom(v, "fail"),
+      };
+    }
     const initiallyPassed = isPass(v);
 
     if (initiallyPassed) {
@@ -167,6 +181,7 @@ export async function verifyAndRepair(opts: {
     failedInitial: questions.length - passedInitial,
     repaired: results.filter((r) => r.verdict === "repaired").length,
     flagged: results.filter((r) => r.verdict === "flagged").length,
+    unverified: results.filter((r) => r.verdict === "unverified").length,
   };
 
   return { questions: results, summary };

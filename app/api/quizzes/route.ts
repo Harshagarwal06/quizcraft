@@ -10,7 +10,14 @@ import { GENERATOR_PROMPT_HASH } from "@/lib/llm/prompt";
 import { HF_MODEL_NAME, geminiModelName } from "@/lib/llm/client";
 import { shuffleQuizOptions } from "@/lib/llm/shuffle";
 import { expandTopic } from "@/lib/expand";
-import { extractText } from "@/lib/extract";
+import { extractSource, type ExtractedSource } from "@/lib/extract";
+import { createEvidenceQuiz } from "@/lib/pipeline/quiz-pipeline";
+import {
+  researchGroundedTopic,
+  WebGroundingError,
+} from "@/lib/source/web-grounding";
+import type { GroundedReference } from "@/lib/source/store";
+import { recordGenerationTrace } from "@/lib/pipeline/trace";
 import { z } from "zod";
 
 const generateSchema = z.object({
@@ -22,6 +29,7 @@ const generateSchema = z.object({
 
 export async function POST(req: NextRequest) {
   const reqStart = Date.now();
+  const evidenceEnabled = process.env.EVIDENCE_PIPELINE_ENABLED !== "false";
   let userId: string;
   try {
     userId = await getCurrentUserId();
@@ -34,8 +42,11 @@ export async function POST(req: NextRequest) {
   }
 
   const contentType = req.headers.get("content-type") ?? "";
-  let sourceType: string;
+  let sourceType: "pdf" | "notes" | "prompt";
   let sourceText: string;
+  let sourceTitle: string;
+  let extractedSource: ExtractedSource;
+  let groundedReferences: GroundedReference[] | undefined;
   let userPrompt: string | undefined;
   let questionCount = 10;
 
@@ -45,7 +56,13 @@ export async function POST(req: NextRequest) {
     const file = form.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
     const buffer = Buffer.from(await file.arrayBuffer());
-    sourceText = await extractText({ type: "pdf", buffer });
+    extractedSource = await extractSource({
+      type: "pdf",
+      buffer,
+      title: file.name.replace(/\.pdf$/i, ""),
+    });
+    sourceText = extractedSource.fullText;
+    sourceTitle = extractedSource.title || file.name.replace(/\.pdf$/i, "");
     userPrompt = (form.get("userPrompt") as string) || undefined;
     questionCount = Math.min(15, Math.max(3, Number(form.get("questionCount")) || 8));
     sourceType = "pdf";
@@ -55,10 +72,57 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid input" }, { status: 400 });
     }
-    sourceText = await extractText({ type: "text", content: parsed.data.content });
     userPrompt = parsed.data.userPrompt;
     questionCount = parsed.data.questionCount;
     sourceType = parsed.data.sourceType;
+    if (sourceType === "prompt" && evidenceEnabled) {
+      const researchStarted = Date.now();
+      try {
+        const grounded = await researchGroundedTopic(parsed.data.content, userPrompt);
+        extractedSource = grounded.extracted;
+        groundedReferences = grounded.references;
+        sourceText = grounded.extracted.fullText;
+        sourceTitle = parsed.data.content.slice(0, 100);
+        await recordGenerationTrace({
+          stage: "web_research",
+          durationMs: Date.now() - researchStarted,
+          status: "success",
+        });
+      } catch (error) {
+        const groundingCode =
+          error instanceof WebGroundingError ? error.code : "provider_unavailable";
+        await recordGenerationTrace({
+          stage: "web_research",
+          durationMs: Date.now() - researchStarted,
+          status: "failed",
+          errorCode:
+            groundingCode === "insufficient_sources"
+              ? "WEB_GROUNDING_INSUFFICIENT"
+              : "WEB_GROUNDING_UNAVAILABLE",
+        });
+        const detail = error instanceof Error ? error.message : String(error);
+        const insufficient = groundingCode === "insufficient_sources";
+        return NextResponse.json(
+          {
+            error: insufficient
+              ? "Couldn't ground this topic in enough authoritative sources. Upload notes or a PDF instead."
+              : "Web-grounded topic generation is temporarily unavailable. Please retry later, or upload notes or a PDF.",
+            detail,
+          },
+          { status: insufficient ? 422 : 503 }
+        );
+      }
+    } else {
+      extractedSource = await extractSource({
+        type: "text",
+        content: parsed.data.content,
+        title: sourceType === "prompt" ? parsed.data.content.slice(0, 100) : "Pasted notes",
+      });
+      sourceText = extractedSource.fullText;
+      sourceTitle =
+        extractedSource.title ||
+        (sourceType === "prompt" ? parsed.data.content.slice(0, 100) : "Pasted notes");
+    }
   }
 
   if (sourceText.length < 20) {
@@ -71,6 +135,34 @@ export async function POST(req: NextRequest) {
   console.log(
     `[quizzes] start sourceType=${sourceType} chars=${sourceText.length} questions=${questionCount} provider=${provider}`
   );
+
+  if (evidenceEnabled) {
+    try {
+      const quiz = await createEvidenceQuiz({
+        userId,
+        sourceKind:
+          sourceType === "prompt" ? "web" : sourceType === "pdf" ? "pdf" : "notes",
+        sourceType,
+        sourceTitle,
+        extracted: extractedSource,
+        questionCount,
+        userPrompt,
+        references: groundedReferences,
+        startedAt: new Date(reqStart),
+      });
+      return NextResponse.json(quiz, { status: 201 });
+    } catch (error) {
+      console.error("[quizzes] evidence pipeline failed:", error);
+      const detail = error instanceof Error ? error.message : String(error);
+      return NextResponse.json(
+        {
+          error: "Couldn't prepare the first verified questions. Please try again.",
+          detail,
+        },
+        { status: 502 }
+      );
+    }
+  }
 
   // For a bare topic ("prompt") — or thin notes/PDF text — first expand the
   // input into a detailed study briefing via Gemini, so the quiz generator has
@@ -173,7 +265,11 @@ export async function GET() {
   const userId = await getCurrentUserId();
 
   const quizzes = await prisma.quiz.findMany({
-    where: { userId, purpose: "standard" },
+    where: {
+      userId,
+      purpose: "standard",
+      OR: [{ generationStatus: "legacy" }, { questionCount: { gt: 0 } }],
+    },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
