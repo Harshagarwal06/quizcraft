@@ -99,6 +99,8 @@ model Quiz {
   blueprintItems QuizBlueprintItem[]
   generationBatches QuizGenerationBatch[]
   generationTraces GenerationTrace[]
+
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model Question {

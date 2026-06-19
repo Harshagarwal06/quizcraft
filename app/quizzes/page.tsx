@@ -1,18 +1,8 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NavBar from "@/app/components/NavBar";
-
-type QuizSummary = {
-  id: string;
-  title: string;
-  sourceType: string;
-  questionCount: number;
-  createdAt: string;
-  _count: { attempts: number };
-};
+import { getCurrentUserId } from "@/lib/currentUser";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
 
 const sourceTypeLabel: Record<string, string> = {
   pdf: "PDF",
@@ -26,24 +16,36 @@ const sourceTypeColor: Record<string, string> = {
   prompt: "bg-violet-100 text-violet-700",
 };
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+function formatDate(date: Date): string {
+  return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
 }
 
-export default function QuizzesPage() {
-  const router = useRouter();
-  const [quizzes, setQuizzes] = useState<QuizSummary[] | null>(null);
+export default async function QuizzesPage() {
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    redirect("/api/auth/signin");
+  }
 
-  useEffect(() => {
-    fetch("/api/quizzes")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setQuizzes)
-      .catch(() => setQuizzes([]));
-  }, []);
+  const quizzes = await prisma.quiz.findMany({
+    where: {
+      userId,
+      purpose: "standard",
+      OR: [{ generationStatus: "legacy" }, { questionCount: { gt: 0 } }],
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      sourceType: true,
+      questionCount: true,
+      createdAt: true,
+      _count: { select: { attempts: true } },
+    },
+  });
 
   return (
     <>
@@ -59,20 +61,11 @@ export default function QuizzesPage() {
           </Link>
         </div>
 
-        {quizzes === null ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="glass-card animate-pulse p-5">
-                <div className="mb-2 h-4 w-2/3 rounded" style={{ backgroundColor: "var(--border)" }} />
-                <div className="h-3 w-1/3 rounded" style={{ backgroundColor: "var(--border)" }} />
-              </div>
-            ))}
-          </div>
-        ) : quizzes.length === 0 ? (
+        {quizzes.length === 0 ? (
           <div className="glass-card p-12 text-center">
             <div
               className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl text-white"
-              style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+              style={{ backgroundImage: "linear-gradient(135deg, #a78bfa, #818cf8)" }}
             >
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 11l3 3L22 4" />
@@ -102,12 +95,12 @@ export default function QuizzesPage() {
                     {q._count.attempts === 1 ? "attempt" : "attempts"} · {formatDate(q.createdAt)}
                   </p>
                 </div>
-                <button
-                  onClick={() => router.push(`/quiz/${q.id}`)}
+                <Link
+                  href={`/quiz/${q.id}`}
                   className="btn-ghost shrink-0 text-sm"
                 >
                   Play again
-                </button>
+                </Link>
               </div>
             ))}
           </div>
