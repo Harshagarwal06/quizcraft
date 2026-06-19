@@ -34,7 +34,7 @@ const n = (v: bigint | number | null) => Number(v ?? 0);
 const pct = (correct: number, total: number) =>
   total > 0 ? Math.round((correct / total) * 100) : 0;
 
-async function buildDashboard() {
+export async function buildDashboard() {
   const userId = await getCurrentUserId();
 
   // Aggregate in the database (GROUP BY over a JOIN) instead of pulling every

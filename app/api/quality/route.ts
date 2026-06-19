@@ -52,7 +52,7 @@ const percentile = (values: number[], value: number) => {
   return sorted[Math.min(sorted.length - 1, Math.ceil(value * sorted.length) - 1)];
 };
 
-async function buildQuality() {
+export async function buildQuality() {
   const userId = await getCurrentUserId();
 
   // Question-level verdict distribution — aggregated in SQL (stays small as data grows).

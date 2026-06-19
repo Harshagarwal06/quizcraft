@@ -301,6 +301,8 @@ model Attempt {
   quiz          Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade)
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   answerRecords AnswerRecord[]
+
+  @@index([userId, completedAt])
 }
 
 model AnswerRecord {
@@ -313,4 +315,7 @@ model AnswerRecord {
 
   attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@index([questionId])
 }
