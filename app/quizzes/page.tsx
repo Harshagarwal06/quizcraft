@@ -21,9 +21,9 @@ const sourceTypeLabel: Record<string, string> = {
 };
 
 const sourceTypeColor: Record<string, string> = {
-  pdf: "bg-rose-100 text-rose-700",
-  notes: "bg-sky-100 text-sky-700",
-  prompt: "bg-violet-100 text-violet-700",
+  pdf: "bg-rose-500/15 text-rose-300",
+  notes: "bg-sky-500/15 text-sky-300",
+  prompt: "bg-violet-500/15 text-violet-300",
 };
 
 function formatDate(iso: string): string {
@@ -51,7 +51,7 @@ export default function QuizzesPage() {
       <div className="mx-auto max-w-3xl px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">My Quizzes</h1>
+            <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-jakarta)' }}>My Quizzes</h1>
             <p className="mt-1 text-muted">All quizzes you&apos;ve generated</p>
           </div>
           <Link href="/generate" className="btn-primary">
@@ -62,14 +62,14 @@ export default function QuizzesPage() {
         {quizzes === null ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="card animate-pulse p-5">
+              <div key={i} className="glass-card animate-pulse p-5">
                 <div className="mb-2 h-4 w-2/3 rounded" style={{ backgroundColor: "var(--border)" }} />
                 <div className="h-3 w-1/3 rounded" style={{ backgroundColor: "var(--border)" }} />
               </div>
             ))}
           </div>
         ) : quizzes.length === 0 ? (
-          <div className="card p-12 text-center">
+          <div className="glass-card p-12 text-center">
             <div
               className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl text-white"
               style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
@@ -87,7 +87,7 @@ export default function QuizzesPage() {
         ) : (
           <div className="space-y-3">
             {quizzes.map((q) => (
-              <div key={q.id} className="card flex items-center justify-between gap-4 p-5">
+              <div key={q.id} className="glass-card flex items-center justify-between gap-4 p-5">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1.5 flex flex-wrap items-center gap-2">
                     <span

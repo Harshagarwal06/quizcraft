@@ -459,7 +459,7 @@ export default function QuizPage() {
   if (phase === "error" || !quiz) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="card p-8 text-center">
+        <div className="glass-card p-8 text-center">
           <p className="mb-4 text-foreground">Quiz not found.</p>
           <Link href="/dashboard" className="btn-ghost">
             Back to dashboard
@@ -472,7 +472,7 @@ export default function QuizPage() {
   if (phase === "preparing") {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="card max-w-md p-8 text-center">
+        <div className="glass-card max-w-md p-8 text-center">
           <div
             className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-t-transparent"
             style={{ borderColor: "var(--primary-soft)", borderTopColor: "var(--primary)" }}
@@ -490,7 +490,7 @@ export default function QuizPage() {
   if (phase === "unavailable") {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="card max-w-md p-8 text-center">
+        <div className="glass-card max-w-md p-8 text-center">
           <h1 className="text-xl font-bold">Review needs another pass</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             {quiz.reviewReadiness?.reason ??
@@ -534,7 +534,7 @@ export default function QuizPage() {
     return (
       <div className="px-4 py-10">
         <div className="mx-auto max-w-2xl">
-          <div className="card mb-6 overflow-hidden p-8 text-center">
+          <div className="glass-card mb-6 overflow-hidden p-8 text-center">
             <h1 className="text-xl font-bold tracking-tight">{quiz.title}</h1>
             <p className="mb-6 mt-0.5 text-sm text-muted">Quiz complete</p>
             <div
@@ -626,7 +626,7 @@ export default function QuizPage() {
             {finalResults.map((r, i) => (
               <div
                 key={r.questionId}
-                className="card overflow-hidden p-5"
+                className="glass-card overflow-hidden p-5"
                 style={{ borderLeft: `4px solid ${r.isCorrect ? "#10b981" : "#f43f5e"}` }}
               >
                 <div className="mb-3 flex items-start justify-between gap-2">
@@ -811,7 +811,7 @@ export default function QuizPage() {
             </div>
           )}
 
-        <div className="card p-6">
+        <div className="glass-card p-6">
           <div className="mb-4 flex items-center gap-2">
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${difficultyColor[q.difficulty]}`}>
               {q.difficulty}

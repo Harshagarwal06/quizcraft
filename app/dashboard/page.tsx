@@ -160,7 +160,7 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-3xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-jakarta)' }}>Dashboard</h1>
             <p className="mt-1 text-muted">Track your learning progress</p>
           </div>
           <Link href="/generate" className="btn-primary">
@@ -186,7 +186,7 @@ export default function DashboardPage() {
               color: "#10b981",
             },
           ].map((card) => (
-            <div key={card.label} className="card p-5">
+            <div key={card.label} className="glass-card p-5">
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
                 {card.label}
               </p>
@@ -200,7 +200,7 @@ export default function DashboardPage() {
         {data.mastery.reviewGroups.length > 0 && (
           <section className="mb-8">
             <div className="mb-4">
-              <h2 className="text-lg font-bold tracking-tight">Ready to review</h2>
+              <h2 className="section-header">Ready to review</h2>
               <p className="mt-1 text-sm text-muted">
                 Fresh verified questions for your weakest due concepts.
               </p>
@@ -214,7 +214,7 @@ export default function DashboardPage() {
               {data.mastery.reviewGroups.map((group) => (
                 <div
                   key={group.sourceQuizId}
-                  className="card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
+                  className="glass-card flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <h3 className="font-semibold">{group.quizTitle}</h3>
@@ -260,7 +260,7 @@ export default function DashboardPage() {
             { label: "Quizzes taken", value: String(data.totalAttempts), accent: false },
             { label: "Questions answered", value: String(data.totalAnswered), accent: false },
           ].map((card) => (
-            <div key={card.label} className="card p-5">
+            <div key={card.label} className="glass-card p-5">
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{card.label}</p>
               <p
                 className="text-3xl font-bold"
@@ -273,7 +273,7 @@ export default function DashboardPage() {
         </div>
 
         {!hasData ? (
-          <div className="card p-12 text-center">
+          <div className="glass-card p-12 text-center">
             <div
               className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl text-white"
               style={{ backgroundImage: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
@@ -290,7 +290,7 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-6">
             {data.accuracyOverTime.length > 1 && (
-              <div className="card p-6">
+              <div className="glass-card p-6">
                 <h2 className="mb-4 text-sm font-semibold">Accuracy over time</h2>
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={data.accuracyOverTime}>
@@ -315,7 +315,7 @@ export default function DashboardPage() {
             )}
 
             {data.byDifficulty.length > 0 && (
-              <div className="card p-6">
+              <div className="glass-card p-6">
                 <h2 className="mb-4 text-sm font-semibold">Accuracy by difficulty</h2>
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart data={data.byDifficulty} barCategoryGap="30%">
@@ -338,7 +338,7 @@ export default function DashboardPage() {
             )}
 
             {data.byTopic.length > 0 && (
-              <div className="card p-6">
+              <div className="glass-card p-6">
                 <h2 className="mb-4 text-sm font-semibold">Top topics</h2>
                 <div className="space-y-3">
                   {data.byTopic.map((t) => (
@@ -363,7 +363,7 @@ export default function DashboardPage() {
         {quality && quality.quizzesVerified > 0 && (
           <div className="mt-10">
             <div className="mb-4 flex items-center gap-2">
-              <h2 className="text-lg font-bold tracking-tight">Quality Engine</h2>
+              <h2 className="section-header">Quality Engine</h2>
               <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                 {quality.quizzesVerified} {quality.quizzesVerified === 1 ? "quiz" : "quizzes"} verified
               </span>
@@ -379,7 +379,7 @@ export default function DashboardPage() {
                 { label: "Auto-repaired", value: `${quality.repairRate}%`, color: "#6366f1" },
                 { label: "Removed (flagged)", value: `${quality.removalRate}%`, color: "#f59e0b" },
               ].map((card) => (
-                <div key={card.label} className="card p-5">
+                <div key={card.label} className="glass-card p-5">
                   <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{card.label}</p>
                   <p className="text-3xl font-bold" style={{ color: card.color }}>{card.value}</p>
                 </div>
@@ -387,7 +387,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <div className="card p-6">
+              <div className="glass-card p-6">
                 <h3 className="mb-4 text-sm font-semibold">Question verdicts</h3>
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart
@@ -416,7 +416,7 @@ export default function DashboardPage() {
               </div>
 
               {quality.qualityOverTime.length > 1 && (
-                <div className="card p-6">
+                <div className="glass-card p-6">
                   <h3 className="mb-4 text-sm font-semibold">Errors caught over time</h3>
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={quality.qualityOverTime}>
@@ -435,7 +435,7 @@ export default function DashboardPage() {
             </div>
 
             {quality.pipeline.averageRequestedQuestions > 0 && (
-              <div className="card mt-6 p-6">
+              <div className="glass-card mt-6 p-6">
                 <h3 className="mb-4 text-sm font-semibold">
                   Evidence pipeline
                 </h3>
@@ -477,7 +477,7 @@ export default function DashboardPage() {
             )}
 
             {quality.byVerifierModel.length > 0 && (
-              <div className="card mt-6 p-6">
+              <div className="glass-card mt-6 p-6">
                 <h3 className="mb-4 text-sm font-semibold">By verifier model</h3>
                 <div className="space-y-2">
                   {quality.byVerifierModel.map((m) => (

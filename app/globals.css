@@ -84,6 +84,11 @@
   /* ---- App background wash (fixed indigo + violet radial blobs) ---- */
   --bg-wash: radial-gradient(1200px 600px at 100% -10%, rgba(99, 102, 241, 0.1), transparent 60%),
     radial-gradient(900px 500px at -10% 10%, rgba(168, 85, 247, 0.08), transparent 55%);
+
+  /* ---- Glass surfaces ---- */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 12px;
 }
 
 @theme inline {
@@ -138,6 +143,24 @@ body {
   background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* ---- Subtle dot-grid background (dark mode only) ---- */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image:
+      radial-gradient(circle at center, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+      var(--bg-wash);
+    background-size: 32px 32px, auto;
+    background-attachment: fixed;
+  }
+}
+:root[data-theme="dark"] body {
+  background-image:
+    radial-gradient(circle at center, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+    var(--bg-wash);
+  background-size: 32px 32px, auto;
+  background-attachment: fixed;
 }
 
 @layer components {
@@ -209,6 +232,65 @@ body {
     background: var(--rose-100);
     color: var(--rose-700);
   }
+
+  /* ---- Glassmorphism card ---- */
+  .glass-card {
+    @apply rounded-2xl;
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+  }
+
+  /* ---- Gradient text ---- */
+  .gradient-text {
+    background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ---- Section divider with glow ---- */
+  .section-header {
+    @apply text-lg font-bold tracking-tight;
+    font-family: var(--font-jakarta), var(--font-geist-sans), system-ui, sans-serif;
+  }
+}
+
+/* ---- Animated bar fill ---- */
+@keyframes fillBar {
+  from { width: 0; }
+}
+.animate-bar {
+  animation: fillBar 0.8s var(--ease-out) forwards;
+}
+
+/* ---- Dark mode badge overrides ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .badge-easy {
+    background: rgba(16, 185, 129, 0.15);
+    color: #6ee7b7;
+  }
+  :root:not([data-theme="light"]) .badge-medium {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fcd34d;
+  }
+  :root:not([data-theme="light"]) .badge-hard {
+    background: rgba(244, 63, 94, 0.15);
+    color: #fda4af;
+  }
+}
+:root[data-theme="dark"] .badge-easy {
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+}
+:root[data-theme="dark"] .badge-medium {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+}
+:root[data-theme="dark"] .badge-hard {
+  background: rgba(244, 63, 94, 0.15);
+  color: #fda4af;
 }
 
 .text-muted {
