@@ -2,11 +2,11 @@
 // Prevents "ReferenceError: DOMMatrix is not defined" when rendering is not needed.
 
 if (typeof globalThis.DOMMatrix === "undefined") {
-  globalThis.DOMMatrix = class DOMMatrix {} as any;
+  globalThis.DOMMatrix = class DOMMatrix {} as unknown as typeof DOMMatrix;
 }
 if (typeof globalThis.Path2D === "undefined") {
-  globalThis.Path2D = class Path2D {} as any;
+  globalThis.Path2D = class Path2D {} as unknown as typeof Path2D;
 }
 if (typeof globalThis.ImageData === "undefined") {
-  globalThis.ImageData = class ImageData {} as any;
+  globalThis.ImageData = class ImageData {} as unknown as typeof ImageData;
 }
