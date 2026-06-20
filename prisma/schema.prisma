@@ -24,6 +24,7 @@ model User {
   attempts Attempt[]
   conceptReviews ConceptReview[]
   sourceDocuments SourceDocument[]
+  studyPlans StudyPlan[]
 }
 
 model Account {
@@ -144,6 +145,7 @@ model SourceDocument {
   chunks     SourceChunk[]
   references SourceReference[]
   quizzes    Quiz[]
+  studyPlanLinks StudyPlanSource[]
 
   @@unique([userId, contentHash])
 }
@@ -162,6 +164,7 @@ model SourceChunk {
   sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
   references     ChunkReference[]
   evidence       QuestionEvidence[]
+  lessonEvidence CoachLessonEvidence[]
 
   @@unique([sourceDocumentId, ordinal])
   @@index([sourceDocumentId])
@@ -318,4 +321,173 @@ model AnswerRecord {
 
   @@index([attemptId])
   @@index([questionId])
+}
+
+model StudyPlan {
+  id            String   @id @default(cuid())
+  userId        String
+  examTitle     String
+  examDate      DateTime
+  targetScore   Int
+  dailyMinutes  Int
+  availableDays String
+  status        String   @default("active") // active | archived
+  activeKey     String?  @unique
+  stateVersion  Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sources  StudyPlanSource[]
+  concepts PlanConcept[]
+  threads  CoachThread[]
+  actions  CoachAction[]
+  lessons  CoachLesson[]
+  runs     CoachRun[]
+
+  @@index([userId, status])
+}
+
+model StudyPlanSource {
+  studyPlanId     String
+  sourceDocumentId String
+  createdAt       DateTime @default(now())
+
+  studyPlan     StudyPlan     @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+
+  @@id([studyPlanId, sourceDocumentId])
+  @@index([sourceDocumentId])
+}
+
+model PlanConcept {
+  id               String   @id @default(cuid())
+  studyPlanId      String
+  sourceDocumentId String
+  sourceQuizId     String?
+  conceptKey       String
+  label            String
+  importance       Float    @default(0.5)
+  objectives       String
+  seedChunkIds     String
+  proficiency      Float    @default(0)
+  lastActivityAt   DateTime?
+  lastLessonAt     DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  studyPlan StudyPlan @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([studyPlanId, conceptKey])
+  @@index([studyPlanId, sourceDocumentId])
+}
+
+model CoachThread {
+  id          String   @id @default(cuid())
+  studyPlanId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  studyPlan StudyPlan     @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  messages  CoachMessage[]
+
+  @@unique([studyPlanId])
+}
+
+model CoachMessage {
+  id                String   @id @default(cuid())
+  threadId          String
+  role              String // user | assistant
+  content           String
+  citations         String?
+  pendingPlanUpdate String?
+  proposedActionId  String?
+  createdAt         DateTime @default(now())
+
+  thread CoachThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+}
+
+model CoachAction {
+  id                String   @id @default(cuid())
+  studyPlanId       String
+  type              String // lesson | quiz | review | request_source | rest
+  status            String   @default("proposed")
+  title             String
+  rationale         String
+  estimatedMinutes  Int
+  conceptKeys       String
+  sourceDocumentIds String
+  payload           String?
+  planStateVersion  Int
+  generatedQuizId   String?
+  readyHref         String?
+  errorCode         String?
+  errorMessage      String?
+  approvedAt        DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  studyPlan StudyPlan    @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  lesson    CoachLesson?
+
+  @@index([studyPlanId, status, createdAt])
+}
+
+model CoachLesson {
+  id             String   @id @default(cuid())
+  studyPlanId    String
+  actionId       String   @unique
+  title          String
+  conceptKey     String
+  sections       String
+  misconception  String
+  workedExample  String?
+  summary        String
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  studyPlan StudyPlan             @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+  action    CoachAction            @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  evidence  CoachLessonEvidence[]
+
+  @@index([studyPlanId, createdAt])
+}
+
+model CoachLessonEvidence {
+  id            String @id @default(cuid())
+  lessonId      String
+  sourceChunkId String
+  quote         String
+  displayOrder  Int
+
+  lesson      CoachLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  sourceChunk SourceChunk @relation(fields: [sourceChunkId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, displayOrder])
+}
+
+model CoachRun {
+  id                 String   @id @default(cuid())
+  studyPlanId        String
+  trigger            String
+  candidateActions   String
+  selectedActionType String?
+  selectedActionId   String?
+  provider           String?
+  model              String?
+  durationMs         Int
+  inputTokens        Int?
+  outputTokens       Int?
+  status             String
+  policyRejected     Boolean  @default(false)
+  errorCode          String?
+  createdAt          DateTime @default(now())
+
+  studyPlan StudyPlan @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
+
+  @@index([studyPlanId, createdAt])
 }

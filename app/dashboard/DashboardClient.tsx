@@ -15,6 +15,7 @@ import {
   Bar,
   Cell,
 } from "recharts";
+import CoachPanel, { type CoachSnapshot } from "./CoachPanel";
 
 type DashboardData = {
   overallAccuracy: number;
@@ -79,9 +80,11 @@ const difficultyColor: Record<string, string> = {
 export default function DashboardClient({
   data,
   quality,
+  coach,
 }: {
   data: DashboardData;
   quality: QualityData | null;
+  coach: CoachSnapshot;
 }) {
   const router = useRouter();
   const [reviewLoadingId, setReviewLoadingId] = useState<string | null>(null);
@@ -123,6 +126,8 @@ export default function DashboardClient({
           + New quiz
         </Link>
       </div>
+
+      <CoachPanel initial={coach} />
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[

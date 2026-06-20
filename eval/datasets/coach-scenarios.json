@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "due-review-is-mandatory",
+      "now": "2026-06-20T12:00:00.000Z",
+      "examDate": "2026-08-20T12:00:00.000Z",
+      "sourceCount": 1,
+      "expectedActionType": "review",
+      "concepts": [
+        {
+          "conceptKey": "cell-respiration",
+          "label": "Cell respiration",
+          "importance": 0.9,
+          "answered": 4,
+          "incorrect": 3,
+          "lastAnsweredAt": "2026-06-19T12:00:00.000Z",
+          "lastIncorrectAt": "2026-06-19T12:00:00.000Z",
+          "lastLessonAt": null,
+          "sourceDocumentId": "source-biology",
+          "sourceQuizId": "quiz-biology"
+        }
+      ],
+      "dueReviews": [
+        {
+          "sourceQuizId": "quiz-biology",
+          "sourceDocumentId": "source-biology",
+          "quizTitle": "Biology Midterm",
+          "concepts": [
+            {
+              "conceptKey": "cell-respiration",
+              "label": "Cell respiration",
+              "stage": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recent-mistake-needs-lesson",
+      "now": "2026-06-20T12:00:00.000Z",
+      "examDate": "2026-07-20T12:00:00.000Z",
+      "sourceCount": 1,
+      "expectedActionType": "lesson",
+      "concepts": [
+        {
+          "conceptKey": "newtons-second-law",
+          "label": "Newton's second law",
+          "importance": 0.85,
+          "answered": 5,
+          "incorrect": 2,
+          "lastAnsweredAt": "2026-06-19T12:00:00.000Z",
+          "lastIncorrectAt": "2026-06-19T12:00:00.000Z",
+          "lastLessonAt": "2026-06-10T12:00:00.000Z",
+          "sourceDocumentId": "source-physics",
+          "sourceQuizId": "quiz-physics"
+        }
+      ],
+      "dueReviews": []
+    },
+    {
+      "id": "unseen-important-concept-needs-lesson",
+      "now": "2026-06-20T12:00:00.000Z",
+      "examDate": "2026-09-01T12:00:00.000Z",
+      "sourceCount": 1,
+      "expectedActionType": "lesson",
+      "concepts": [
+        {
+          "conceptKey": "mitosis",
+          "label": "Mitosis",
+          "importance": 1,
+          "answered": 0,
+          "incorrect": 0,
+          "lastAnsweredAt": null,
+          "lastIncorrectAt": null,
+          "lastLessonAt": null,
+          "sourceDocumentId": "source-biology",
+          "sourceQuizId": "quiz-biology"
+        }
+      ],
+      "dueReviews": []
+    },
+    {
+      "id": "remediated-concepts-get-mixed-quiz",
+      "now": "2026-06-20T12:00:00.000Z",
+      "examDate": "2026-07-10T12:00:00.000Z",
+      "sourceCount": 1,
+      "expectedActionType": "quiz",
+      "concepts": [
+        {
+          "conceptKey": "supply-demand",
+          "label": "Supply and demand",
+          "importance": 0.8,
+          "answered": 8,
+          "incorrect": 2,
+          "lastAnsweredAt": "2026-06-18T12:00:00.000Z",
+          "lastIncorrectAt": "2026-06-12T12:00:00.000Z",
+          "lastLessonAt": "2026-06-15T12:00:00.000Z",
+          "sourceDocumentId": "source-economics",
+          "sourceQuizId": "quiz-economics"
+        },
+        {
+          "conceptKey": "elasticity",
+          "label": "Elasticity",
+          "importance": 0.7,
+          "answered": 6,
+          "incorrect": 1,
+          "lastAnsweredAt": "2026-06-17T12:00:00.000Z",
+          "lastIncorrectAt": "2026-06-11T12:00:00.000Z",
+          "lastLessonAt": "2026-06-14T12:00:00.000Z",
+          "sourceDocumentId": "source-economics",
+          "sourceQuizId": "quiz-economics"
+        }
+      ],
+      "dueReviews": []
+    },
+    {
+      "id": "insufficient-evidence-requests-source",
+      "now": "2026-06-20T12:00:00.000Z",
+      "examDate": "2026-08-01T12:00:00.000Z",
+      "sourceCount": 0,
+      "expectedActionType": "request_source",
+      "concepts": [],
+      "dueReviews": []
+    },
+    {
+      "id": "past-exam-rests-and-asks-for-plan-update",
+      "now": "2026-06-20T12:00:00.000Z",
+      "examDate": "2026-06-01T12:00:00.000Z",
+      "sourceCount": 1,
+      "expectedActionType": "rest",
+      "concepts": [
+        {
+          "conceptKey": "constitutional-law",
+          "label": "Constitutional law",
+          "importance": 0.9,
+          "answered": 2,
+          "incorrect": 0,
+          "lastAnsweredAt": "2026-05-30T12:00:00.000Z",
+          "lastIncorrectAt": null,
+          "lastLessonAt": null,
+          "sourceDocumentId": "source-law",
+          "sourceQuizId": "quiz-law"
+        }
+      ],
+      "dueReviews": []
+    }
+  ]
+}

@@ -11,6 +11,7 @@
 - **Progressive start** — begin after the first three questions pass verification while later idempotent batches prepare in the background.
 - **Explainable player** — after answering, see the explanation, why each option is right or wrong, the supporting passage, page/section, and web citations when available.
 - **Verified mastery reviews** — missed concepts become fresh, quality-checked medium/hard question pairs, then return on a 1/3/7/14/30-day schedule until mastered.
+- **Study Coach Agent** — set an exam goal and availability, then receive one source-grounded lesson, quiz, review, source request, or rest recommendation. Generation and plan changes always require confirmation.
 - **Progress dashboard** — accuracy over time, performance by difficulty, and per-topic mastery (charts via Recharts).
 - **Pilot persistence** — quizzes and attempts are saved for the shared private-pilot guest account.
 - **Provider-agnostic AI** — swap the model with one env var. Ships with **HuggingFace Qwen2.5-72B-Instruct** and **Google Gemini** implementations.
@@ -59,6 +60,8 @@ HF_API_KEY="hf_..."             # if using HuggingFace
 GEMINI_API_KEY="..."            # Gemini generation and prompt-only web grounding
 EVIDENCE_PIPELINE_ENABLED="true"
 WEB_GROUNDING_ENABLED="true"
+COACH_AGENT_ENABLED="true"
+COACH_AGENT_SHADOW="false"
 ```
 
 ### 3. Set up the database
@@ -81,11 +84,13 @@ Open **http://localhost:3001** and generate your first quiz.
 app/
 ├─ (auth)/            sign in / sign up
 ├─ dashboard/         progress dashboard
+├─ coach/             cited remediation lessons
 ├─ generate/          create a quiz (notes / PDF / prompt)
 ├─ quiz/[id]/         interactive quiz player
 ├─ api/               route handlers (quizzes, attempts, auth, dashboard)
 └─ components/        shared UI (NavBar)
 lib/
+├─ coach/             bounded planner, policy, chat, lessons, and execution
 ├─ llm/               provider calls, blueprint generation, verification
 ├─ pipeline/          evidence batching, persistence, and generation traces
 ├─ source/            chunking, BM25/MMR retrieval, and web grounding

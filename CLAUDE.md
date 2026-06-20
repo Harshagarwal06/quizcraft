@@ -58,6 +58,8 @@ app/
   providers.tsx         next-auth SessionProvider wrapper
   components/NavBar.tsx  shared nav (client component)
   dashboard/page.tsx    progress charts (client; fetches /api/dashboard)
+  dashboard/CoachPanel.tsx coach onboarding, recommendation, confirmation, chat
+  coach/lessons/[id]/page.tsx cited remediation lesson
   generate/page.tsx     create a quiz: notes / PDF / prompt tabs (client)
   quiz/[id]/page.tsx    interactive player (client)
   api/
@@ -70,6 +72,12 @@ app/
     dashboard/route.ts           GET aggregated learning stats
     quality/route.ts             GET Quality-Engine stats (verdicts, repair/removal, provenance)
     reviews/route.ts             POST generate a targeted verified mastery review
+    coach/route.ts               GET active plan, recommendation, sources, messages
+    coach/plans/route.ts         POST create the single active pilot plan
+    coach/plans/[id]/route.ts    PATCH a confirmed plan change
+    coach/chat/route.ts          POST grounded plan-scoped chat
+    coach/refresh/route.ts       POST refresh one recommendation
+    coach/actions/[id]/*         confirm or dismiss a proposal
     auth/[...nextauth]/route.ts  NextAuth handlers (unused while auth is off)
     auth/signup/route.ts         credential signup (unused while auth is off)
 lib/
@@ -77,6 +85,8 @@ lib/
   schema.ts        idempotent DDL (mirrors the migration) for self-provisioning
   currentUser.ts   getCurrentUserId() — returns the shared guest user
   mastery.ts       concept normalization, scheduling, and review validation
+  coach/           state snapshot, deterministic policy, bounded model planner,
+                   confirmed execution, cited lessons/chat, activity refresh
   auth.ts          NextAuth config (credentials + JWT)
   extract/index.ts structured page/section extraction for text or PDF buffers
   source/          chunking, BM25/MMR retrieval, web grounding, persistence
@@ -140,6 +150,24 @@ verification is pending: only complete two-question concept pairs with
 advance through 1/3/7/14/30-day intervals; a wrong answer resets the concept to
 stage 0, due immediately. Generated review quizzes use `purpose="review"` and are
 hidden from the normal quiz library.
+
+### Study Coach Agent flow
+
+One active `StudyPlan` links the pilot user to approved `SourceDocument`s and a
+normalized `PlanConcept` map. A compact state snapshot uses the latest 12
+answers per concept, due mastery reviews, source coverage, and exam proximity.
+`buildCoachCandidates()` deterministically creates the eligible allowlist:
+mandatory due review, remediation lesson, unseen-concept lesson, mixed quiz, or
+source request. The planner model may select only one candidate ID; malformed or
+failed model output falls back to the highest-ranked deterministic candidate.
+
+The selected `CoachAction` is persisted as `proposed`. No lesson, quiz, review,
+or plan mutation happens until `POST /api/coach/actions/[id]/confirm` (or a
+confirmed plan PATCH). Confirmation is idempotent and rejects actions whose
+captured `planStateVersion` is stale. Generation failures remain `failed` and
+retryable without changing mastery. Chat searches only sources attached to the
+active plan, validates exact quotes, refuses unsupported content questions, and
+can propose—but not execute—actions or plan changes.
 
 ### Quality Engine (verification + repair) — async, cross-model
 
@@ -247,6 +275,8 @@ See `.env.example`. Key ones:
 - `EVIDENCE_PIPELINE_ENABLED` (default on) — new source/blueprint/batch pipeline
 - `WEB_GROUNDING_ENABLED` (default on) — prompt-only Gemini Search grounding
 - `TRUSTED_SOURCE_DOMAINS` — optional comma-separated authority additions
+- `COACH_AGENT_ENABLED` (default on) — enable Study Coach APIs and dashboard UI
+- `COACH_AGENT_SHADOW` (default off) — record planner runs without surfacing proposals
 - `NEXTAUTH_SECRET` / `AUTH_SECRET`, `NEXTAUTH_URL` / `AUTH_URL`,
   `AUTH_TRUST_HOST` (read even though auth is currently bypassed)
 

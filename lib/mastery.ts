@@ -64,6 +64,44 @@ export function selectDueConcepts(
     .slice(0, limit);
 }
 
+export function selectRequestedDueConcepts(
+  concepts: DueConcept[],
+  now: Date,
+  requestedKeys?: string[],
+  limit = 3
+):
+  | { ok: true; concepts: DueConcept[] }
+  | { ok: false; reason: string } {
+  if (!requestedKeys) {
+    return { ok: true, concepts: selectDueConcepts(concepts, now, limit) };
+  }
+  const unique = [...new Set(requestedKeys)];
+  if (
+    unique.length === 0 ||
+    unique.length > limit ||
+    unique.length !== requestedKeys.length
+  ) {
+    return {
+      ok: false,
+      reason: `Choose between one and ${limit} unique due concepts.`,
+    };
+  }
+  const due = new Map(
+    selectDueConcepts(concepts, now, concepts.length).map((concept) => [
+      concept.conceptKey,
+      concept,
+    ])
+  );
+  const selected = unique.map((key) => due.get(key));
+  if (selected.some((concept) => !concept)) {
+    return {
+      ok: false,
+      reason: "Every requested concept must currently be due for this quiz.",
+    };
+  }
+  return { ok: true, concepts: selected as DueConcept[] };
+}
+
 function addUtcDays(now: Date, days: number): Date {
   return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 }

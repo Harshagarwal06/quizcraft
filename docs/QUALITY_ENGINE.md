@@ -115,6 +115,29 @@ tolerant of HF's loose JSON.
 `lib/pipeline/{evidence-generation,quiz-pipeline,trace}.ts`,
 `app/api/quizzes/[id]/batches/route.ts`.
 
+### 2.5 Source-grounded Study Coach Agent — **SHIPPED**
+
+- A single active `StudyPlan` stores the exam date, target, daily availability,
+  approved sources, concept map, and versioned state for the shared pilot user.
+- A deterministic policy creates eligible actions from due reviews, the latest
+  12 answers per concept, importance, recency, and exam urgency. Due mastery
+  reviews always outrank optional work.
+- The model can select one candidate ID only from that allowlist. Invalid or
+  unavailable model output uses the highest-ranked deterministic action.
+- Every action is a persisted proposal. Lessons, quizzes, reviews, and plan
+  changes require learner confirmation; confirmation is idempotent and stale
+  plan versions are rejected.
+- Lessons and content chat retrieve only chunks attached to the active plan and
+  require exact persisted quotes. Unsupported questions become a source request
+  instead of an invented answer.
+- Coach actions refresh after attempts, lesson completion, plan edits, or an
+  explicit refresh. Ordinary dashboard reads do not run the planner.
+- `CoachRun` captures trigger, candidates, selection, provider/model, duration,
+  fallback/policy errors, and token fields when the provider supplies them.
+
+**Key files:** `lib/coach/*`, `app/api/coach/*`,
+`app/dashboard/CoachPanel.tsx`, `app/coach/lessons/[id]/*`.
+
 ---
 
 ## 3. Roadmap
@@ -142,7 +165,9 @@ part that produces the resume number.
 - **Metrics:** schema validity, grounding, answer-key correctness, unique-answer
   rate, distractor validity, difficulty distribution, repair/removal rates,
   baseline error rate, and post-repair shipped-error rate with Wilson 95%
-  confidence intervals.
+  confidence intervals. Fixed learner-state scenarios additionally gate coach
+  action appropriateness, mandatory due-review compliance, unsupported-answer
+  refusal, and tool-policy violations.
 - **Independent eval judge:** a dedicated judge (`selectEvalJudge()`,
   `EVAL_JUDGE_PROVIDER`) scores the benchmark and is calibrated against the human
   labels — kept separate from the repair verifier so repairs aren't graded by the
@@ -197,8 +222,9 @@ this section will be filled with the live, calibrated κ + baseline error rate
 
 - **Providers:** `LLM_PROVIDER` = `hf` | `gemini` (generator); `VERIFIER_PROVIDER`
   optional (defaults to the provider opposite `LLM_PROVIDER` for cross-model).
-- **Rollout flags:** `EVIDENCE_PIPELINE_ENABLED`, `WEB_GROUNDING_ENABLED`, and
-  optional `TRUSTED_SOURCE_DOMAINS`.
+- **Rollout flags:** `EVIDENCE_PIPELINE_ENABLED`, `WEB_GROUNDING_ENABLED`,
+  `COACH_AGENT_ENABLED`, `COACH_AGENT_SHADOW`, and optional
+  `TRUSTED_SOURCE_DOMAINS`.
 - **Keys:** `HF_API_KEY`, `GEMINI_API_KEY` (+ optional `GEMINI_MODEL`). Gemini's key
   also powers topic expansion, so the whole app can run on one Gemini key.
 - **Prod recommendation:** set `LLM_PROVIDER=gemini`. The HF free router (Qwen-72B)
@@ -224,3 +250,4 @@ this section will be filled with the live, calibrated κ + baseline error rate
 | Phase 2 — eval harness + calibration + benchmark | ✅ Shipped |
 | Phase 3 — quality dashboard + regression gating + provenance | ✅ Shipped |
 | Evidence-first cited generation + progressive batches | ✅ Shipped |
+| Source-grounded Study Coach Agent | ✅ Shipped |

@@ -4,7 +4,11 @@
     "promptHashes": { "generator": "55518f6b1846", "verifier": "b92973a546d8" },
     "minCalibrationKappa": 0.8,
     "minSchemaValidity": 1,
-    "minRetrievalRecallAt3": 0.9
+    "minRetrievalRecallAt3": 0.9,
+    "minCoachActionAppropriateness": 1,
+    "minCoachDueReviewCompliance": 1,
+    "minCoachUnsupportedAnswerRefusalRate": 1,
+    "maxCoachToolPolicyViolationRate": 0
   },
   "live": {
     "minCalibrationKappa": 0.6,

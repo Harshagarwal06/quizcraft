@@ -95,12 +95,20 @@ export default async function QuizzesPage() {
                     {q._count.attempts === 1 ? "attempt" : "attempts"} · {formatDate(q.createdAt)}
                   </p>
                 </div>
-                <Link
-                  href={`/quiz/${q.id}`}
-                  className="btn-ghost shrink-0 text-sm"
-                >
-                  Play again
-                </Link>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  <Link
+                    href={`/quizzes/${q.id}`}
+                    className="btn-ghost text-center text-sm"
+                  >
+                    View quiz
+                  </Link>
+                  <Link
+                    href={`/quiz/${q.id}`}
+                    className="btn-primary text-center text-sm"
+                  >
+                    Play again
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

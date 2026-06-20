@@ -4,6 +4,8 @@ import NavBar from "@/app/components/NavBar";
 import DashboardClient from "./DashboardClient";
 import { buildDashboard } from "@/app/api/dashboard/route";
 import { buildQuality } from "@/app/api/quality/route";
+import { buildCoachSnapshot } from "@/lib/coach/state";
+import { isCoachEnabled } from "@/lib/coach/types";
 
 export default async function DashboardPage() {
   const userId = await getCurrentUserId();
@@ -13,9 +15,18 @@ export default async function DashboardPage() {
 
   // Fetch both concurrently from the database directly, completely eliminating 
   // the client-server waterfall network requests.
-  const [dashboardResponse, qualityResponse] = await Promise.all([
+  const [dashboardResponse, qualityResponse, coachData] = await Promise.all([
     buildDashboard(),
-    buildQuality()
+    buildQuality(),
+    isCoachEnabled()
+      ? buildCoachSnapshot(userId)
+      : Promise.resolve({
+          enabled: false,
+          plan: null,
+          availableSources: [],
+          recommendation: null,
+          messages: [],
+        }),
   ]);
 
   const dashboardData = await dashboardResponse.json();
@@ -24,7 +35,11 @@ export default async function DashboardPage() {
   return (
     <>
       <NavBar />
-      <DashboardClient data={dashboardData} quality={qualityData} />
+      <DashboardClient
+        data={dashboardData}
+        quality={qualityData}
+        coach={coachData}
+      />
     </>
   );
 }

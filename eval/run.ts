@@ -16,6 +16,12 @@ import { verifyAndRepair, type Verdict } from "../lib/llm/verify/repair";
 import { HF_MODEL_NAME, geminiModelName } from "../lib/llm/client";
 import { retrieveChunks } from "../lib/source/retrieval";
 import { quoteExistsInChunk } from "../lib/source/chunk";
+import {
+  buildCoachCandidates,
+  type CoachConceptState,
+  type DueReviewState,
+} from "../lib/coach/policy";
+import { isAllowedCoachTool } from "../lib/coach/types";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const reportsDir = path.join(root, "eval", "reports");
@@ -109,6 +115,55 @@ const retrievalDatasetSchema = z.object({
   ),
 });
 
+const coachScenarioSchema = z.object({
+  id: z.string().min(1),
+  now: z.string().datetime(),
+  examDate: z.string().datetime(),
+  sourceCount: z.number().int().nonnegative(),
+  expectedActionType: z.enum([
+    "lesson",
+    "quiz",
+    "review",
+    "request_source",
+    "rest",
+  ]),
+  concepts: z.array(
+    z.object({
+      conceptKey: z.string().min(1),
+      label: z.string().min(1),
+      importance: z.number().min(0).max(1),
+      answered: z.number().int().nonnegative(),
+      incorrect: z.number().int().nonnegative(),
+      lastAnsweredAt: z.string().datetime().nullable(),
+      lastIncorrectAt: z.string().datetime().nullable(),
+      lastLessonAt: z.string().datetime().nullable(),
+      sourceDocumentId: z.string().min(1),
+      sourceQuizId: z.string().nullable(),
+    })
+  ),
+  dueReviews: z.array(
+    z.object({
+      sourceQuizId: z.string().min(1),
+      sourceDocumentId: z.string().min(1),
+      quizTitle: z.string().min(1),
+      concepts: z
+        .array(
+          z.object({
+            conceptKey: z.string().min(1),
+            label: z.string().min(1),
+            stage: z.number().int().min(0).max(6),
+          })
+        )
+        .min(1),
+    })
+  ),
+});
+
+const coachScenariosSchema = z.object({
+  version: z.number().int(),
+  scenarios: z.array(coachScenarioSchema).min(1),
+});
+
 type EvalSource = z.infer<typeof evalSourceSchema>;
 type CalibrationCase = z.infer<typeof calibrationCaseSchema>;
 type BenchmarkFixture = z.infer<typeof benchmarkFixtureSchema>;
@@ -199,6 +254,20 @@ interface EvalReport {
       expectedChunkIds: string[];
       recall: number;
       quoteValid: boolean;
+    }[];
+  };
+  studyCoach: {
+    scenarioCount: number;
+    actionAppropriateness: number;
+    dueReviewCompliance: number;
+    unsupportedAnswerRefusalRate: number;
+    toolPolicyViolationRate: number;
+    cases: {
+      id: string;
+      expectedActionType: string;
+      selectedActionType: string;
+      tool: string | null;
+      passed: boolean;
     }[];
   };
 }
@@ -378,6 +447,73 @@ function runEvidencePipelineEval(
       cases.filter((item) => item.quoteValid).length /
         Math.max(1, cases.length)
     ),
+    cases,
+  };
+}
+
+function runStudyCoachEval(
+  dataset: z.infer<typeof coachScenariosSchema>
+): EvalReport["studyCoach"] {
+  const cases = dataset.scenarios.map((scenario) => {
+    const concepts: CoachConceptState[] = scenario.concepts.map((concept) => ({
+      ...concept,
+      lastAnsweredAt: concept.lastAnsweredAt
+        ? new Date(concept.lastAnsweredAt)
+        : null,
+      lastIncorrectAt: concept.lastIncorrectAt
+        ? new Date(concept.lastIncorrectAt)
+        : null,
+      lastLessonAt: concept.lastLessonAt
+        ? new Date(concept.lastLessonAt)
+        : null,
+    }));
+    const dueReviews: DueReviewState[] = scenario.dueReviews;
+    const selected = buildCoachCandidates({
+      concepts,
+      dueReviews,
+      examDate: new Date(scenario.examDate),
+      now: new Date(scenario.now),
+      sourceCount: scenario.sourceCount,
+    })[0];
+    if (!selected) {
+      throw new Error(`${scenario.id} produced no eligible coach action`);
+    }
+    return {
+      id: scenario.id,
+      expectedActionType: scenario.expectedActionType,
+      selectedActionType: selected.type,
+      tool: selected.tool,
+      passed: selected.type === scenario.expectedActionType,
+    };
+  });
+  const dueCases = dataset.scenarios.filter(
+    (scenario) => scenario.dueReviews.length > 0
+  );
+  const unsupportedCases = dataset.scenarios.filter(
+    (scenario) => scenario.sourceCount === 0
+  );
+  const byId = new Map(cases.map((item) => [item.id, item]));
+  const toolViolations = cases.filter(
+    (item) => item.tool !== null && !isAllowedCoachTool(item.tool)
+  ).length;
+
+  return {
+    scenarioCount: cases.length,
+    actionAppropriateness: round4(
+      cases.filter((item) => item.passed).length / Math.max(1, cases.length)
+    ),
+    dueReviewCompliance: round4(
+      dueCases.filter(
+        (scenario) => byId.get(scenario.id)?.selectedActionType === "review"
+      ).length / Math.max(1, dueCases.length)
+    ),
+    unsupportedAnswerRefusalRate: round4(
+      unsupportedCases.filter(
+        (scenario) =>
+          byId.get(scenario.id)?.selectedActionType === "request_source"
+      ).length / Math.max(1, unsupportedCases.length)
+    ),
+    toolPolicyViolationRate: round4(toolViolations / Math.max(1, cases.length)),
     cases,
   };
 }
@@ -801,6 +937,7 @@ async function runCalibration(live: boolean, judge: VerifierInfo | null, cases: 
 function renderMarkdown(report: EvalReport): string {
   const b = report.benchmark;
   const evidence = report.evidencePipeline;
+  const coach = report.studyCoach;
   const c = report.calibration;
   const lines: string[] = [];
   lines.push("# Quality Engine Phase 2 Eval Report");
@@ -812,6 +949,21 @@ function renderMarkdown(report: EvalReport): string {
   );
   lines.push(
     `- Exact evidence quote validity: ${percentage(evidence.evidenceQuoteValidity)}`
+  );
+  lines.push("");
+  lines.push("## Study Coach policy");
+  lines.push("");
+  lines.push(
+    `- Action appropriateness: ${percentage(coach.actionAppropriateness)} across ${coach.scenarioCount} fixed learner states`
+  );
+  lines.push(
+    `- Due-review compliance: ${percentage(coach.dueReviewCompliance)}`
+  );
+  lines.push(
+    `- Unsupported-answer refusal: ${percentage(coach.unsupportedAnswerRefusalRate)}`
+  );
+  lines.push(
+    `- Tool-policy violation rate: ${percentage(coach.toolPolicyViolationRate)}`
   );
   lines.push("");
   if (report.config.synthetic) {
@@ -930,6 +1082,10 @@ const baselineSchema = z.object({
     minCalibrationKappa: z.number(),
     minSchemaValidity: z.number(),
     minRetrievalRecallAt3: z.number().default(0.9),
+    minCoachActionAppropriateness: z.number().default(1),
+    minCoachDueReviewCompliance: z.number().default(1),
+    minCoachUnsupportedAnswerRefusalRate: z.number().default(1),
+    maxCoachToolPolicyViolationRate: z.number().default(0),
   }),
   live: z.object({
     minCalibrationKappa: z.number(),
@@ -979,6 +1135,38 @@ async function checkAgainstBaseline(report: EvalReport): Promise<string[]> {
         `retrieval recall@3 ${report.evidencePipeline.retrievalRecallAt3} < required ${baseline.offline.minRetrievalRecallAt3}`
       );
     }
+    if (
+      report.studyCoach.actionAppropriateness <
+      baseline.offline.minCoachActionAppropriateness
+    ) {
+      failures.push(
+        `coach action appropriateness ${report.studyCoach.actionAppropriateness} < required ${baseline.offline.minCoachActionAppropriateness}`
+      );
+    }
+    if (
+      report.studyCoach.dueReviewCompliance <
+      baseline.offline.minCoachDueReviewCompliance
+    ) {
+      failures.push(
+        `coach due-review compliance ${report.studyCoach.dueReviewCompliance} < required ${baseline.offline.minCoachDueReviewCompliance}`
+      );
+    }
+    if (
+      report.studyCoach.unsupportedAnswerRefusalRate <
+      baseline.offline.minCoachUnsupportedAnswerRefusalRate
+    ) {
+      failures.push(
+        `coach unsupported-answer refusal ${report.studyCoach.unsupportedAnswerRefusalRate} < required ${baseline.offline.minCoachUnsupportedAnswerRefusalRate}`
+      );
+    }
+    if (
+      report.studyCoach.toolPolicyViolationRate >
+      baseline.offline.maxCoachToolPolicyViolationRate
+    ) {
+      failures.push(
+        `coach tool-policy violation rate ${report.studyCoach.toolPolicyViolationRate} > allowed ${baseline.offline.maxCoachToolPolicyViolationRate}`
+      );
+    }
   }
   return failures;
 }
@@ -994,6 +1182,10 @@ async function main(): Promise<void> {
   const retrievalDataset = await readJson(
     "eval/datasets/evidence-retrieval.json",
     retrievalDatasetSchema
+  );
+  const coachDataset = await readJson(
+    "eval/datasets/coach-scenarios.json",
+    coachScenariosSchema
   );
   const sources = sourcesDataset.sources;
   const calibrationCases = calibrationDataset.cases;
@@ -1035,6 +1227,7 @@ async function main(): Promise<void> {
     calibration,
     benchmark,
     evidencePipeline: runEvidencePipelineEval(retrievalDataset),
+    studyCoach: runStudyCoachEval(coachDataset),
   };
 
   if (benchmark.postRepairShippedErrorRate.total + benchmark.removalRate.count !== benchmark.questionCount) {
@@ -1057,6 +1250,9 @@ async function main(): Promise<void> {
   );
   console.log(
     `Evidence retrieval recall@3: ${percentage(report.evidencePipeline.retrievalRecallAt3)}`
+  );
+  console.log(
+    `Coach action appropriateness: ${percentage(report.studyCoach.actionAppropriateness)} | due-review compliance: ${percentage(report.studyCoach.dueReviewCompliance)} | tool-policy violations: ${percentage(report.studyCoach.toolPolicyViolationRate)}`
   );
   console.log(
     `Post-repair shipped error rate: ${report.benchmark.postRepairShippedErrorRate.count}/${report.benchmark.postRepairShippedErrorRate.total} (${percentage(report.benchmark.postRepairShippedErrorRate.rate)})${report.config.postRepairIndependent ? "" : " [self-consistency, not independent]"}`

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
 import {
@@ -8,6 +8,8 @@ import {
   type ConceptTransition,
 } from "@/lib/mastery";
 import { z } from "zod";
+import { recordCoachQuizActivity } from "@/lib/coach/activity";
+import { refreshCoachRecommendation } from "@/lib/coach/planner";
 
 const submitSchema = z.object({
   quizId: z.string(),
@@ -251,6 +253,25 @@ export async function POST(req: NextRequest) {
     ).length;
     const nextDueAt =
       activeStates.find((state) => state.dueAt !== null)?.dueAt ?? null;
+    const coachPlanId = await recordCoachQuizActivity({
+      userId,
+      quizId: quiz.id,
+      sourceDocumentId: quiz.sourceDocumentId,
+      sourceQuizId: quiz.sourceQuizId,
+      topics: scoredAnswers.map((answer) => answer.topic),
+      completedAt: now,
+    });
+    if (coachPlanId) {
+      after(async () => {
+        await refreshCoachRecommendation(
+          userId,
+          coachPlanId,
+          "attempt_completed"
+        ).catch((error) => {
+          console.warn("[coach] post-attempt refresh failed:", error);
+        });
+      });
+    }
 
     return NextResponse.json({
       attemptId: attempt.id,

@@ -5,7 +5,10 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentUserId } from "@/lib/currentUser";
 import { prisma } from "@/lib/db";
-import { normalizeConceptKey, selectDueConcepts } from "@/lib/mastery";
+import {
+  normalizeConceptKey,
+  selectRequestedDueConcepts,
+} from "@/lib/mastery";
 import { generateWithFallback } from "@/lib/llm";
 import { shuffleQuizOptions } from "@/lib/llm/shuffle";
 import { REVIEW_GENERATOR_PROMPT_HASH } from "@/lib/llm/prompt";
@@ -14,6 +17,7 @@ import { createEvidenceReviewQuiz } from "@/lib/pipeline/quiz-pipeline";
 
 const requestSchema = z.object({
   sourceQuizId: z.string().min(1),
+  conceptKeys: z.array(z.string().min(1)).min(1).max(3).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -61,7 +65,16 @@ export async function POST(req: NextRequest) {
       createdAt: true,
     },
   });
-  const selected = selectDueConcepts(reviewStates, now, 3);
+  const selection = selectRequestedDueConcepts(
+    reviewStates,
+    now,
+    parsed.data.conceptKeys,
+    3
+  );
+  if (!selection.ok) {
+    return NextResponse.json({ error: selection.reason }, { status: 409 });
+  }
+  const selected = selection.concepts;
   if (selected.length === 0) {
     return NextResponse.json(
       { error: "No concepts are due for review.", code: "NO_DUE_REVIEW" },
