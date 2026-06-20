@@ -22,6 +22,11 @@ import {
   validateGeneratedBatch,
   type EvidenceBlueprintItem,
 } from "../lib/pipeline/evidence-generation";
+import {
+  FIRST_BATCH_SIZE,
+  batchCountForQuestions,
+  batchIndexForSlot,
+} from "../lib/pipeline/batching";
 
 test("note extraction preserves detected sections", async () => {
   const source = await extractSource({
@@ -98,6 +103,32 @@ test("difficulty allocation uses exact largest-remainder targets", () => {
   assert.equal(ten.filter((value) => value === "easy").length, 3);
   assert.equal(ten.filter((value) => value === "medium").length, 4);
   assert.equal(ten.filter((value) => value === "hard").length, 3);
+});
+
+test("batching front-loads a tiny first batch and stays self-consistent", () => {
+  // The first batch is small so the player can show question 1 fast.
+  assert.equal(batchIndexForSlot(0), 0);
+  assert.equal(
+    Array.from({ length: 20 }, (_, slot) => batchIndexForSlot(slot)).filter(
+      (index) => index === 0
+    ).length,
+    FIRST_BATCH_SIZE
+  );
+
+  for (const count of [1, 2, 3, 5, 8, 9, 10, 15]) {
+    const batches = batchCountForQuestions(count);
+    const slots = Array.from({ length: count }, (_, slot) =>
+      batchIndexForSlot(slot)
+    );
+    // The slot mapping and the batch count must never disagree: every slot lands
+    // in a real batch, and the highest batch index is exactly the last batch.
+    assert.equal(Math.max(...slots), batches - 1, `count=${count}`);
+    assert.deepEqual(
+      [...new Set(slots)].sort((a, b) => a - b),
+      Array.from({ length: batches }, (_, index) => index),
+      `count=${count} has no empty batches`
+    );
+  }
 });
 
 test("deterministic blueprint fallback preserves count, slots, and source coverage", () => {
@@ -283,6 +314,36 @@ test("evidence generation rejects topic drift and non-matching quotes", () => {
     () =>
       validateGeneratedBatch({ raw: invalid, items: [item], previousStems: [] }),
     /does not match/
+  );
+
+  // Duplicate option text is a defect the schema can't catch — reject it locally
+  // so it never reaches (and wastes) the verifier.
+  const duplicateOption = structuredClone(valid);
+  duplicateOption.questions[0].options[1].text = "Blue and red";
+  assert.throws(
+    () =>
+      validateGeneratedBatch({
+        raw: duplicateOption,
+        items: [item],
+        previousStems: [],
+      }),
+    /duplicate option text/
+  );
+
+  // The correct option must actually be one of the four offered options.
+  const danglingKey = structuredClone(valid);
+  danglingKey.questions[0].options = danglingKey.questions[0].options.map(
+    (option, index) => ({ ...option, id: (["A", "B", "C", "D"] as const)[index] })
+  );
+  danglingKey.questions[0].options[0].id = "B";
+  assert.throws(
+    () =>
+      validateGeneratedBatch({
+        raw: danglingKey,
+        items: [item],
+        previousStems: [],
+      }),
+    /four distinct options/
   );
 });
 

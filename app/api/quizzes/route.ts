@@ -11,7 +11,10 @@ import { HF_MODEL_NAME, geminiModelName } from "@/lib/llm/client";
 import { shuffleQuizOptions } from "@/lib/llm/shuffle";
 import { expandTopic } from "@/lib/expand";
 import { extractSource, type ExtractedSource } from "@/lib/extract";
-import { createEvidenceQuiz } from "@/lib/pipeline/quiz-pipeline";
+import {
+  createEvidenceQuiz,
+  upgradeBlueprintWithModel,
+} from "@/lib/pipeline/quiz-pipeline";
 import {
   researchGroundedTopic,
   WebGroundingError,
@@ -153,6 +156,18 @@ export async function POST(req: NextRequest) {
         startedAt: new Date(reqStart),
         deferFirstBatch,
       });
+      if (deferFirstBatch) {
+        // Run the model planner off the critical path: the response (and the
+        // first deterministic batch the player triggers) no longer waits on it.
+        // It upgrades only the later batches' blueprint items; best-effort.
+        after(async () => {
+          try {
+            await upgradeBlueprintWithModel({ quizId: quiz.id, userPrompt });
+          } catch (err) {
+            console.warn("[quizzes] background blueprint upgrade failed:", err);
+          }
+        });
+      }
       return NextResponse.json(quiz, {
         status: deferFirstBatch ? 202 : 201,
       });

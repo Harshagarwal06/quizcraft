@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { ExtractedSource } from "@/lib/extract";
 import { normalizeConceptKey } from "@/lib/mastery";
-import { buildQuizBlueprint } from "@/lib/llm/blueprint";
+import { buildQuizBlueprint, buildDeterministicBlueprint } from "@/lib/llm/blueprint";
 import type { GeneratedQuestion } from "@/lib/llm/types";
 import {
   selectVerifier,
@@ -16,6 +16,7 @@ import {
   type EvidenceBlueprintItem,
 } from "./evidence-generation";
 import { recordGenerationTrace } from "./trace";
+import { batchCountForQuestions, FIRST_BATCH_SIZE } from "./batching";
 import {
   persistSourceDocument,
   type GroundedReference,
@@ -24,7 +25,9 @@ import { retrieveChunks } from "@/lib/source/retrieval";
 import type { StructuredProvider } from "@/lib/llm/structured";
 import { geminiModelName, HF_MODEL_NAME } from "@/lib/llm/client";
 
-const BATCH_SIZE = 3;
+// Review quizzes generate concept pairs and keep a fixed batch size; standard
+// quizzes use the time-to-first-question batching plan in batching.ts instead.
+const REVIEW_BATCH_SIZE = 3;
 
 type SourceKind = "pdf" | "notes" | "web";
 
@@ -214,14 +217,23 @@ export async function createEvidenceQuiz(opts: {
     status: "success",
   });
 
+  // Build a deterministic blueprint synchronously so the quiz exists immediately
+  // and batch 0 can start without waiting on the slower model planner. The model
+  // planner upgrades the later batches off the critical path
+  // (upgradeBlueprintWithModel), which is the time-to-first-question win.
+  // generatorModel is left null on purpose: a "deterministic-*" value would force
+  // deterministic *question* generation in processEvidenceBatch; null lets batch 0
+  // attempt real model generation while the upgrade settles the signal.
   const blueprintStarted = Date.now();
-  const blueprint = await buildQuizBlueprint({
+  const blueprint = buildDeterministicBlueprint({
     chunks: sourceDocument.chunks,
     questionCount: opts.questionCount,
     userPrompt: opts.userPrompt,
   });
 
-  const batchCount = Math.ceil(opts.questionCount / BATCH_SIZE);
+  // Standard quizzes use a tiny first batch (see batching.ts) so the player can
+  // show question 1 as fast as possible; remaining questions fill in later.
+  const batchCount = batchCountForQuestions(opts.questionCount);
   const quiz = await prisma.quiz.create({
     data: {
       userId: opts.userId,
@@ -234,7 +246,7 @@ export async function createEvidenceQuiz(opts: {
       targetQuestionCount: opts.questionCount,
       questionCount: 0,
       createdAt: opts.startedAt,
-      generatorModel: blueprint.model,
+      generatorModel: null,
       generatorPromptHash: EVIDENCE_GENERATOR_PROMPT_HASH,
       blueprintItems: {
         create: blueprint.items.map((item) => ({
@@ -261,14 +273,16 @@ export async function createEvidenceQuiz(opts: {
   await recordGenerationTrace({
     quizId: quiz.id,
     stage: "blueprint",
-    provider: blueprint.provider,
-    model: blueprint.model,
+    provider: "local",
+    model: "deterministic-blueprint-v1",
     durationMs: Date.now() - blueprintStarted,
     questionCount: opts.questionCount,
     status: "success",
   });
 
   if (opts.deferFirstBatch) {
+    // The route schedules upgradeBlueprintWithModel() via after() so the model
+    // planner runs after the response is sent, not on the path to question 1.
     return {
       id: quiz.id,
       title: quiz.title,
@@ -276,6 +290,12 @@ export async function createEvidenceQuiz(opts: {
     };
   }
 
+  // Non-deferred callers (tests, non-browser) want the full model-planned quiz,
+  // so run the upgrade inline before generating the first batch.
+  await upgradeBlueprintWithModel({
+    quizId: quiz.id,
+    userPrompt: opts.userPrompt,
+  });
   const first = await processEvidenceBatch(quiz.id, 0);
   if (first.status !== "ready") {
     throw new Error(
@@ -287,6 +307,110 @@ export async function createEvidenceQuiz(opts: {
     title: quiz.title,
     questionCount: first.readyCount,
   };
+}
+
+/**
+ * Upgrade a freshly created quiz's deterministic blueprint with the model
+ * planner. Runs off the critical path (via after() for deferred generation) so
+ * it never delays question 1. Only later-batch items still "pending" are
+ * upgraded — batch 0 keeps its fast deterministic plan, and any item a batch has
+ * already claimed is left untouched. Best-effort: on any failure the
+ * deterministic plan simply stands.
+ */
+export async function upgradeBlueprintWithModel(opts: {
+  quizId: string;
+  userPrompt?: string;
+}): Promise<void> {
+  const quiz = await prisma.quiz.findUnique({
+    where: { id: opts.quizId },
+    include: {
+      sourceDocument: { include: { chunks: { orderBy: { ordinal: "asc" } } } },
+      blueprintItems: { orderBy: { slot: "asc" } },
+    },
+  });
+  if (!quiz || !quiz.sourceDocument) return;
+  const upgradeable = quiz.blueprintItems.filter(
+    (item) => item.slot >= FIRST_BATCH_SIZE && item.status === "pending"
+  );
+  if (upgradeable.length === 0) return;
+
+  const started = Date.now();
+  let blueprint: Awaited<ReturnType<typeof buildQuizBlueprint>>;
+  try {
+    blueprint = await buildQuizBlueprint({
+      chunks: quiz.sourceDocument.chunks,
+      questionCount: quiz.targetQuestionCount ?? quiz.blueprintItems.length,
+      userPrompt: opts.userPrompt,
+    });
+  } catch (error) {
+    console.warn("[pipeline] background blueprint upgrade failed:", error);
+    return;
+  }
+
+  // The planner fell back to deterministic — the LLM is unavailable. Signal that
+  // (race-safe via the null guard) so later batches skip straight to
+  // deterministic questions instead of each wasting a generation timeout.
+  if (blueprint.provider === "local") {
+    await prisma.quiz.updateMany({
+      where: { id: quiz.id, generatorModel: null },
+      data: { generatorModel: blueprint.model },
+    });
+    await recordGenerationTrace({
+      quizId: quiz.id,
+      stage: "blueprint",
+      provider: blueprint.provider,
+      model: blueprint.model,
+      durationMs: Date.now() - started,
+      questionCount: blueprint.items.length,
+      status: "failed",
+      errorCode: "BLUEPRINT_MODEL_UNAVAILABLE",
+    });
+    return;
+  }
+
+  const itemsBySlot = new Map(
+    quiz.blueprintItems.map((item) => [item.slot, item])
+  );
+  await prisma.$transaction(async (tx) => {
+    for (const planned of blueprint.items) {
+      if (planned.slot < FIRST_BATCH_SIZE) continue;
+      const existing = itemsBySlot.get(planned.slot);
+      if (!existing) continue;
+      // Guard on "pending" so we never clobber an item a later batch already
+      // started generating between the snapshot above and this write. Difficulty
+      // and batchIndex are identical to the deterministic plan, so they are left
+      // as-is and batch alignment is preserved.
+      await tx.quizBlueprintItem.updateMany({
+        where: { id: existing.id, status: "pending" },
+        data: {
+          conceptKey: planned.conceptKey,
+          topic: planned.topic,
+          objective: planned.objective,
+          skillType: planned.skillType,
+          retrievalQuery: planned.retrievalQuery,
+          requiredFacts: JSON.stringify(planned.requiredFacts),
+          seedChunkIds: JSON.stringify(planned.seedChunkIds),
+        },
+      });
+    }
+    // Record the planning provider so later batches stay on the same model. The
+    // null guard keeps batch 0's own generatorModel write authoritative if it
+    // already ran.
+    await tx.quiz.updateMany({
+      where: { id: quiz.id, generatorModel: null },
+      data: { generatorModel: blueprint.model, title: blueprint.title },
+    });
+  });
+
+  await recordGenerationTrace({
+    quizId: quiz.id,
+    stage: "blueprint",
+    provider: blueprint.provider,
+    model: blueprint.model,
+    durationMs: Date.now() - started,
+    questionCount: blueprint.items.length,
+    status: "success",
+  });
 }
 
 export async function createEvidenceReviewQuiz(opts: {
@@ -346,12 +470,12 @@ export async function createEvidenceReviewQuiz(opts: {
           retrievalQuery: item.concept.label,
           requiredFacts: JSON.stringify([item.concept.label]),
           seedChunkIds: JSON.stringify(item.seedChunkIds),
-          batchIndex: Math.floor(item.slot / BATCH_SIZE),
+          batchIndex: Math.floor(item.slot / REVIEW_BATCH_SIZE),
         })),
       },
       generationBatches: {
         create: Array.from(
-          { length: Math.ceil(planned.length / BATCH_SIZE) },
+          { length: Math.ceil(planned.length / REVIEW_BATCH_SIZE) },
           (_, batchIndex) => ({ batchIndex })
         ),
       },

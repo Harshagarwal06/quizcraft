@@ -14,7 +14,12 @@ import {
 } from "@/lib/source/retrieval";
 
 const EVIDENCE_SYSTEM_PROMPT =
-  "You are a rigorous university exam writer. Return JSON only. Write one unambiguous MCQ per blueprint item, grounded exclusively in that item's evidence chunks. Every option needs a concise explanation and every question needs one or two exact support quotes.";
+  "You are a rigorous university exam writer. Return JSON only. " +
+  "Write one unambiguous MCQ per blueprint item, grounded exclusively in that item's evidence chunks. " +
+  "Exactly one option must be fully provable from the evidence; the other three must be clearly refuted by that same evidence — plausible misconceptions a real student might hold, never absurd or off-topic. " +
+  "Keep all four options mutually exclusive and parallel in length and grammar so the answer is never given away by phrasing. " +
+  "Write self-contained stems: never refer to \"the passage\", \"the text\", \"the source\", or \"the chunk\", and never use \"all of the above\" or \"none of the above\". " +
+  "Every option needs a concise explanation stating why it is correct or which specific misconception it represents, and every question needs one or two exact support quotes copied verbatim from its named chunk.";
 
 export const EVIDENCE_GENERATOR_PROMPT_HASH = createHash("sha256")
   .update(EVIDENCE_SYSTEM_PROMPT)
@@ -130,6 +135,9 @@ function buildBatchPrompt(items: EvidenceBlueprintItem[]): string {
   const lines = [
     `Create exactly ${items.length} multiple-choice questions, one for each blueprint item.`,
     "Follow every blueprint item exactly. Use only its evidence chunks.",
+    "Exactly one option is correct and provable from the evidence; the other three must be refuted by it.",
+    "Give all four options distinct text, parallel in length and grammar; never signal the answer through wording.",
+    "Write a self-contained stem — do not mention the source, passage, text, or chunk.",
     "Evidence quotes must be copied verbatim from the named chunk.",
     "Each distractor explanation must state the specific misconception or source conflict.",
   ];
@@ -249,6 +257,26 @@ export function validateGeneratedBatch(opts: {
       throw new Error("Generated question repeats an existing stem.");
     }
     seenStems.add(stem);
+
+    // Cheap structural gate: catch malformed MCQs here so the generate retry
+    // loop fixes them, instead of spending a (slower) verifier call to discover
+    // the same defect. The Zod schema only guarantees four options exist.
+    const optionIds = question.options.map((option) => option.id);
+    if (new Set(optionIds).size !== 4) {
+      throw new Error("Generated question does not have four distinct options A–D.");
+    }
+    if (!optionIds.includes(question.correctOptionId)) {
+      throw new Error("Generated question's correct option is not one of its options.");
+    }
+    const optionTexts = question.options.map((option) =>
+      normalizeEvidenceText(option.text)
+    );
+    if (optionTexts.some((text) => text.length === 0)) {
+      throw new Error("Generated question has an empty option.");
+    }
+    if (new Set(optionTexts).size !== optionTexts.length) {
+      throw new Error("Generated question has duplicate option text.");
+    }
 
     const chunks = new Map(item.chunks.map((chunk) => [chunk.id, chunk]));
     for (const evidence of question.evidence) {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeConceptKey } from "@/lib/mastery";
 import { topKeywords, type RetrievalChunk } from "@/lib/source/retrieval";
+import { batchIndexForSlot } from "@/lib/pipeline/batching";
 import { callStructuredWithFallback } from "./structured";
 
 const difficultySchema = z.enum(["easy", "medium", "hard"]);
@@ -216,7 +217,7 @@ function validateBlueprint(opts: {
     items: ordered.map((item) => ({
       ...item,
       conceptKey: normalizeConceptKey(item.topic),
-      batchIndex: Math.floor(item.slot / 3),
+      batchIndex: batchIndexForSlot(item.slot),
     })),
   };
 }
@@ -299,7 +300,7 @@ export function buildDeterministicBlueprint(opts: {
         requiredFacts: supportedFacts(chunk.text),
         seedChunkIds: [chunk.id],
         conceptKey: normalizeConceptKey(topic),
-        batchIndex: Math.floor(slot / 3),
+        batchIndex: batchIndexForSlot(slot),
       };
     }),
   };
