@@ -182,7 +182,7 @@ export function buildDeterministicEvidenceQuestions(opts: {
           .join(" ") || item.topic;
       return {
         blueprintItemId: item.id,
-        stem: `Source focus ${item.slot + 1}: Which option reproduces the source's statement about ${cue} without changing its meaning?`,
+        stem: `Which option accurately reproduces the source's statement about ${cue} without changing its meaning?`,
         options: [
           { id: "A" as const, text: quote },
           {

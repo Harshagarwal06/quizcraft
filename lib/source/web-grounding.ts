@@ -226,7 +226,7 @@ export function groundedSourceFromMetadata(
       title: topic,
       pages: passages.map((text, index) => ({
         pageNumber: null,
-        section: `Grounded passage ${index + 1}`,
+        section: `Excerpt ${index + 1}`,
         text,
       })),
       fullText: passages.join("\n\n"),
