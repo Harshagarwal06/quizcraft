@@ -30,6 +30,8 @@ const generateSchema = z.object({
 export async function POST(req: NextRequest) {
   const reqStart = Date.now();
   const evidenceEnabled = process.env.EVIDENCE_PIPELINE_ENABLED !== "false";
+  const deferFirstBatch =
+    req.nextUrl.searchParams.get("deferFirstBatch") === "1";
   let userId: string;
   try {
     userId = await getCurrentUserId();
@@ -149,8 +151,11 @@ export async function POST(req: NextRequest) {
         userPrompt,
         references: groundedReferences,
         startedAt: new Date(reqStart),
+        deferFirstBatch,
       });
-      return NextResponse.json(quiz, { status: 201 });
+      return NextResponse.json(quiz, {
+        status: deferFirstBatch ? 202 : 201,
+      });
     } catch (error) {
       console.error("[quizzes] evidence pipeline failed:", error);
       const detail = error instanceof Error ? error.message : String(error);

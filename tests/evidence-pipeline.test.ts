@@ -6,7 +6,10 @@ import {
   quoteExistsInChunk,
 } from "../lib/source/chunk";
 import { retrieveChunks } from "../lib/source/retrieval";
-import { allocateDifficulties } from "../lib/llm/blueprint";
+import {
+  allocateDifficulties,
+  buildDeterministicBlueprint,
+} from "../lib/llm/blueprint";
 import { shuffleQuizOptions } from "../lib/llm/shuffle";
 import { reconcileVerdicts } from "../lib/llm/verify";
 import { providerVerificationResultSchema } from "../lib/llm/verify/types";
@@ -15,6 +18,7 @@ import {
   groundedSourceFromMetadata,
 } from "../lib/source/web-grounding";
 import {
+  buildDeterministicEvidenceQuestions,
   validateGeneratedBatch,
   type EvidenceBlueprintItem,
 } from "../lib/pipeline/evidence-generation";
@@ -94,6 +98,49 @@ test("difficulty allocation uses exact largest-remainder targets", () => {
   assert.equal(ten.filter((value) => value === "easy").length, 3);
   assert.equal(ten.filter((value) => value === "medium").length, 4);
   assert.equal(ten.filter((value) => value === "hard").length, 3);
+});
+
+test("deterministic blueprint fallback preserves count, slots, and source coverage", () => {
+  const blueprint = buildDeterministicBlueprint({
+    questionCount: 5,
+    userPrompt: "emphasize transport",
+    chunks: [
+      {
+        id: "membrane",
+        text: "Cell membranes contain phospholipids and proteins. Transport proteins move ions across the membrane.",
+        normalizedText:
+          "cell membranes contain phospholipids and proteins transport proteins move ions across the membrane",
+        pageStart: 1,
+        section: "Cell Membranes",
+      },
+      {
+        id: "osmosis",
+        text: "Osmosis is the movement of water across a selectively permeable membrane.",
+        normalizedText:
+          "osmosis is the movement of water across a selectively permeable membrane",
+        pageStart: 2,
+        section: "Osmosis",
+      },
+    ],
+  });
+  assert.equal(blueprint.items.length, 5);
+  assert.deepEqual(
+    blueprint.items.map((item) => item.slot),
+    [0, 1, 2, 3, 4]
+  );
+  assert.deepEqual(
+    blueprint.items.map((item) => item.difficulty),
+    allocateDifficulties(5)
+  );
+  assert.deepEqual(
+    new Set(blueprint.items.flatMap((item) => item.seedChunkIds)),
+    new Set(["membrane", "osmosis"])
+  );
+  assert.ok(
+    blueprint.items.every((item) =>
+      item.retrievalQuery.includes("emphasize transport")
+    )
+  );
 });
 
 test("option shuffling keeps rationales attached to original option text", () => {
@@ -236,6 +283,46 @@ test("evidence generation rejects topic drift and non-matching quotes", () => {
     () =>
       validateGeneratedBatch({ raw: invalid, items: [item], previousStems: [] }),
     /does not match/
+  );
+});
+
+test("deterministic evidence fallback creates exact cited questions", () => {
+  const item: EvidenceBlueprintItem = {
+    id: "item-1",
+    slot: 0,
+    topic: "Osmosis",
+    objective: "Apply osmosis to a source-supported example",
+    difficulty: "medium",
+    skillType: "application",
+    retrievalQuery: "osmosis water membrane",
+    requiredFacts: ["Osmosis moves water across a membrane."],
+    chunks: [
+      {
+        id: "chunk-1",
+        text: "Osmosis moves water across a selectively permeable membrane.",
+        normalizedText:
+          "osmosis moves water across a selectively permeable membrane",
+        pageStart: 1,
+        section: "Osmosis",
+      },
+    ],
+  };
+  const questions = buildDeterministicEvidenceQuestions({
+    items: [item],
+    previousStems: [],
+  });
+  assert.equal(questions.length, 1);
+  assert.equal(questions[0].blueprintItemId, item.id);
+  assert.equal(questions[0].topic, item.topic);
+  assert.equal(
+    questions[0].evidence?.[0].quote,
+    "Osmosis moves water across a selectively permeable membrane."
+  );
+  assert.equal(
+    questions[0].options.find(
+      (option) => option.id === questions[0].correctOptionId
+    )?.text,
+    questions[0].evidence?.[0].quote
   );
 });
 

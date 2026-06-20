@@ -118,10 +118,18 @@ For new quizzes while `EVIDENCE_PIPELINE_ENABLED` is enabled:
 `generate/page.tsx` → `POST /api/quizzes` → structured extraction → persist
 `SourceDocument` + page/section-aware `SourceChunk[]` → validate a complete
 `QuizBlueprintItem[]` plan → local BM25/MMR retrieval → generate three questions
-from only their selected chunks → fail-closed evidence verification → return
-after the first batch is ready. The player calls the idempotent
+from only their selected chunks → fail-closed evidence verification. The
+browser uses `?deferFirstBatch=1` so planning and the first verified batch run in
+two separate serverless requests instead of risking the 60-second route limit.
+The player calls the idempotent
 `POST /api/quizzes/[id]/batches` route to prepare at most two later batches in
 parallel and appends ready questions in blueprint order.
+
+Structured calls prefer Gemini when configured because it enforces the response
+schema. If model planning is unavailable, a local source-coverage blueprint is
+used. If question generation is also unavailable, conservative extractive
+questions are built from exact source sentences and still must pass the other
+configured verifier before play.
 
 Prompt-only quizzes first create a Gemini Google Search brief. The brief is
 accepted only with grounding metadata, at least two distinct source domains,
@@ -266,6 +274,8 @@ See `.env.example`. Key ones:
 
 - `DATABASE_URL` (+ `DATABASE_AUTH_TOKEN` for Turso)
 - `LLM_PROVIDER` = `hf` | `gemini`
+- `STRUCTURED_LLM_PROVIDER` (optional) = `hf` | `gemini`; evidence calls default
+  to Gemini when its key is configured
 - `VERIFIER_PROVIDER` (optional) = `hf` | `gemini` — Quality Engine judge;
   defaults to the provider opposite `LLM_PROVIDER` (cross-model)
 - `EVAL_JUDGE_PROVIDER` (optional) = `hf` | `gemini` — independent judge for the

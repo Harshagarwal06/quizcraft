@@ -3,9 +3,15 @@ import { createHash } from "node:crypto";
 import type { GeneratedQuestion } from "@/lib/llm/types";
 import { generatedQuestionSchema } from "@/lib/llm/types";
 import { shuffleQuizOptions } from "@/lib/llm/shuffle";
-import { callStructuredWithFallback } from "@/lib/llm/structured";
+import {
+  callStructuredWithFallback,
+  type StructuredProvider,
+} from "@/lib/llm/structured";
 import { normalizeEvidenceText, quoteExistsInChunk } from "@/lib/source/chunk";
-import type { RetrievalChunk } from "@/lib/source/retrieval";
+import {
+  topKeywords,
+  type RetrievalChunk,
+} from "@/lib/source/retrieval";
 
 const EVIDENCE_SYSTEM_PROMPT =
   "You are a rigorous university exam writer. Return JSON only. Write one unambiguous MCQ per blueprint item, grounded exclusively in that item's evidence chunks. Every option needs a concise explanation and every question needs one or two exact support quotes.";
@@ -145,6 +151,75 @@ function buildBatchPrompt(items: EvidenceBlueprintItem[]): string {
   return lines.join("\n");
 }
 
+function exactSupportQuote(chunkText: string, offset: number): string {
+  const sentences = chunkText
+    .split(/(?<=[.!?])\s+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 12);
+  const quote =
+    sentences[offset % Math.max(1, sentences.length)] ?? chunkText.trim();
+  if (quote.length < 12) {
+    throw new Error("The evidence chunk is too short for a supported question.");
+  }
+  return quote.slice(0, 320);
+}
+
+export function buildDeterministicEvidenceQuestions(opts: {
+  items: EvidenceBlueprintItem[];
+  previousStems: string[];
+}): GeneratedQuestion[] {
+  const raw = {
+    questions: opts.items.map((item) => {
+      const chunk = item.chunks[0];
+      if (!chunk) {
+        throw new Error(`Blueprint item ${item.id} has no evidence chunk.`);
+      }
+      const quote = exactSupportQuote(chunk.text, item.slot);
+      const cue =
+        topKeywords(quote)
+          .slice(0, 2)
+          .map((word) => word.replace(/\b\w/g, (letter) => letter.toUpperCase()))
+          .join(" ") || item.topic;
+      return {
+        blueprintItemId: item.id,
+        stem: `Source focus ${item.slot + 1}: Which option reproduces the source's statement about ${cue} without changing its meaning?`,
+        options: [
+          { id: "A" as const, text: quote },
+          {
+            id: "B" as const,
+            text: `The source provides no information about ${cue}.`,
+          },
+          {
+            id: "C" as const,
+            text: `The source says ${cue} is unrelated to ${item.topic}.`,
+          },
+          {
+            id: "D" as const,
+            text: `The source says this statement is incorrect: ${quote}`,
+          },
+        ],
+        correctOptionId: "A" as const,
+        explanation:
+          "The correct option restates the exact supporting passage; the other options add claims that the source does not support.",
+        optionExplanations: {
+          A: "This statement is copied from the cited source passage.",
+          B: "The cited passage directly provides information about this subject.",
+          C: "The passage connects the subject to the source topic rather than calling it unrelated.",
+          D: "The cited passage presents this statement as supported, not incorrect.",
+        },
+        difficulty: item.difficulty,
+        topic: item.topic,
+        evidence: [{ chunkId: chunk.id, quote }],
+      };
+    }),
+  };
+  return validateGeneratedBatch({
+    raw,
+    items: opts.items,
+    previousStems: opts.previousStems,
+  });
+}
+
 export function validateGeneratedBatch(opts: {
   raw: unknown;
   items: EvidenceBlueprintItem[];
@@ -194,6 +269,7 @@ export function validateGeneratedBatch(opts: {
 export async function generateEvidenceBatch(opts: {
   items: EvidenceBlueprintItem[];
   previousStems: string[];
+  preferredProvider?: StructuredProvider;
 }): Promise<{
   questions: GeneratedQuestion[];
   provider: string;
@@ -211,8 +287,9 @@ export async function generateEvidenceBatch(opts: {
             ? "\nThe prior response failed validation. Preserve exact item IDs, topics, difficulties, quotes, and counts."
             : ""),
         schema: RESPONSE_SCHEMA,
-        maxTokens: 700 + opts.items.length * 700,
-        timeoutMs: 20_000,
+        maxTokens: Math.min(2_200, 450 + opts.items.length * 450),
+        timeoutMs: 25_000,
+        preferredProvider: opts.preferredProvider,
       });
       return {
         questions: validateGeneratedBatch({
@@ -226,9 +303,24 @@ export async function generateEvidenceBatch(opts: {
       };
     } catch (error) {
       lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        /timed out|quota|API error (?:401|403|429|5\d\d)|No configured structured-output provider/i.test(
+          message
+        )
+      ) {
+        break;
+      }
     }
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Evidence question generation failed.");
+  console.warn(
+    "[evidence] model generation failed; using deterministic cited questions:",
+    lastError
+  );
+  return {
+    questions: buildDeterministicEvidenceQuestions(opts),
+    provider: "local",
+    model: "deterministic-evidence-v1",
+    retryCount: 0,
+  };
 }

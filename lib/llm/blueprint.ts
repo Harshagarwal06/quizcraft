@@ -221,6 +221,90 @@ function validateBlueprint(opts: {
   };
 }
 
+function titleCase(value: string): string {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function supportedFacts(text: string): string[] {
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 12);
+  return (sentences.length > 0 ? sentences : [text.trim()])
+    .slice(0, 2)
+    .map((sentence) => sentence.slice(0, 240));
+}
+
+function sourceTopic(chunk: RetrievalChunk): string {
+  if (chunk.section) return chunk.section;
+  const firstSentence = chunk.text.split(/(?<=[.!?])\s+/)[0] ?? chunk.text;
+  const words = firstSentence
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  while (/^(the|a|an)$/i.test(words[0] ?? "")) words.shift();
+  const verbIndex = words.findIndex((word) =>
+    /^(is|are|was|were|has|have|uses|use|occurs|occur|responds|respond|converts|convert|moves|move|contains|contain|enters|enter|transports|transport)$/i.test(
+      word
+    )
+  );
+  const subject = words.slice(
+    0,
+    verbIndex > 0 ? Math.min(verbIndex, 4) : Math.min(3, words.length)
+  );
+  return subject.length > 0
+    ? titleCase(subject.join(" "))
+    : titleCase(topKeywords(chunk.text).slice(0, 2).join(" ")) || "Source";
+}
+
+export function buildDeterministicBlueprint(opts: {
+  chunks: RetrievalChunk[];
+  questionCount: number;
+  userPrompt?: string;
+}): { title: string; items: BlueprintItem[] } {
+  if (opts.chunks.length === 0) {
+    throw new Error("The source did not produce any usable chunks.");
+  }
+  const difficulties = allocateDifficulties(opts.questionCount);
+  const firstChunk = opts.chunks[0];
+  const titleTopic = sourceTopic(firstChunk);
+
+  return {
+    title: `${titleTopic} Quiz`,
+    items: Array.from({ length: opts.questionCount }, (_, slot) => {
+      const chunk = opts.chunks[slot % opts.chunks.length];
+      const keywords = topKeywords(chunk.text).slice(0, 4);
+      const topic = sourceTopic(chunk);
+      const difficulty = difficulties[slot];
+      const skillType =
+        difficulty === "easy"
+          ? "recall"
+          : difficulty === "medium"
+            ? "application"
+            : "analysis";
+      const focus = opts.userPrompt?.trim();
+      return {
+        slot,
+        topic,
+        objective: `${
+          skillType === "recall"
+            ? "Identify"
+            : skillType === "application"
+              ? "Apply"
+              : "Analyze"
+        } ${topic} using source-supported facts for item ${slot + 1}`,
+        difficulty,
+        skillType,
+        retrievalQuery: [topic, ...keywords, focus].filter(Boolean).join(" "),
+        requiredFacts: supportedFacts(chunk.text),
+        seedChunkIds: [chunk.id],
+        conceptKey: normalizeConceptKey(topic),
+        batchIndex: Math.floor(slot / 3),
+      };
+    }),
+  };
+}
+
 export async function buildQuizBlueprint(opts: {
   chunks: RetrievalChunk[];
   questionCount: number;
@@ -271,9 +355,23 @@ export async function buildQuizBlueprint(opts: {
       };
     } catch (error) {
       lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        /timed out|quota|API error (?:401|403|429|5\d\d)|No configured structured-output provider/i.test(
+          message
+        )
+      ) {
+        break;
+      }
     }
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Blueprint generation failed.");
+  console.warn(
+    "[blueprint] model planning failed; using deterministic source coverage:",
+    lastError
+  );
+  return {
+    ...buildDeterministicBlueprint(opts),
+    provider: "local",
+    model: "deterministic-blueprint-v1",
+  };
 }

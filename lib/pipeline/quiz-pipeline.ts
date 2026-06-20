@@ -3,11 +3,15 @@ import type { ExtractedSource } from "@/lib/extract";
 import { normalizeConceptKey } from "@/lib/mastery";
 import { buildQuizBlueprint } from "@/lib/llm/blueprint";
 import type { GeneratedQuestion } from "@/lib/llm/types";
-import { selectVerifier, verifyQuestions } from "@/lib/llm/verify";
+import {
+  selectVerifier,
+  verifyQuestionsWithFallback,
+} from "@/lib/llm/verify";
 import { VERIFIER_PROMPT_HASH } from "@/lib/llm/verify/prompt";
 import type { QuestionVerdict } from "@/lib/llm/verify/types";
 import {
   EVIDENCE_GENERATOR_PROMPT_HASH,
+  buildDeterministicEvidenceQuestions,
   generateEvidenceBatch,
   type EvidenceBlueprintItem,
 } from "./evidence-generation";
@@ -17,6 +21,8 @@ import {
   type GroundedReference,
 } from "@/lib/source/store";
 import { retrieveChunks } from "@/lib/source/retrieval";
+import type { StructuredProvider } from "@/lib/llm/structured";
+import { geminiModelName, HF_MODEL_NAME } from "@/lib/llm/client";
 
 const BATCH_SIZE = 3;
 
@@ -73,15 +79,14 @@ async function verifyGenerated(
     if (!item) throw new Error("Generated question lost its blueprint item.");
     return auditQuestion(question, item);
   });
-  return {
-    verdicts: await verifyQuestions("", audits, verifier),
-    verifierModel: verifier.model,
-  };
+  return verifyQuestionsWithFallback("", audits, verifier);
 }
 
 async function createQuestionsForBatch(opts: {
   items: EvidenceBlueprintItem[];
   previousStems: string[];
+  preferredProvider?: StructuredProvider;
+  forceDeterministic?: boolean;
 }): Promise<{
   accepted: {
     question: GeneratedQuestion;
@@ -95,7 +100,14 @@ async function createQuestionsForBatch(opts: {
   verifierModel: string;
   retryCount: number;
 }> {
-  const generated = await generateEvidenceBatch(opts);
+  const generated = opts.forceDeterministic
+    ? {
+        questions: buildDeterministicEvidenceQuestions(opts),
+        provider: "local",
+        model: "deterministic-evidence-v1",
+        retryCount: 0,
+      }
+    : await generateEvidenceBatch(opts);
   const firstAudit = await verifyGenerated(generated.questions, opts.items);
   const accepted: {
     question: GeneratedQuestion;
@@ -124,10 +136,11 @@ async function createQuestionsForBatch(opts: {
   });
 
   let verifierModel = firstAudit.verifierModel;
-  if (failedItems.length > 0) {
+  if (failedItems.length > 0 && !opts.forceDeterministic) {
     try {
       const replacement = await generateEvidenceBatch({
         items: failedItems,
+        preferredProvider: opts.preferredProvider,
         previousStems: [
           ...opts.previousStems,
           ...generated.questions.map((question) => question.stem),
@@ -184,6 +197,7 @@ export async function createEvidenceQuiz(opts: {
   originUrl?: string;
   references?: GroundedReference[];
   startedAt?: Date;
+  deferFirstBatch?: boolean;
 }): Promise<{ id: string; title: string; questionCount: number }> {
   const extractionStarted = Date.now();
   const sourceDocument = await persistSourceDocument({
@@ -253,6 +267,14 @@ export async function createEvidenceQuiz(opts: {
     questionCount: opts.questionCount,
     status: "success",
   });
+
+  if (opts.deferFirstBatch) {
+    return {
+      id: quiz.id,
+      title: quiz.title,
+      questionCount: 0,
+    };
+  }
 
   const first = await processEvidenceBatch(quiz.id, 0);
   if (first.status !== "ready") {
@@ -466,6 +488,14 @@ export async function processEvidenceBatch(
         : [];
     const result = await createQuestionsForBatch({
       items,
+      forceDeterministic:
+        quiz.generatorModel?.startsWith("deterministic-") === true,
+      preferredProvider:
+        quiz.generatorModel === geminiModelName()
+          ? "gemini"
+          : quiz.generatorModel === HF_MODEL_NAME
+            ? "hf"
+            : undefined,
       previousStems: [
         ...quiz.questions.map((question) => question.stem),
         ...relatedStems.map((question) => question.stem),

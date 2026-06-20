@@ -106,6 +106,11 @@ tolerant of HF's loose JSON.
   unresolved indexes become `unverified`, never `pass`.
 - The first three verified questions unlock play. Later batches are generated
   with idempotent DB locks and can fail partially without removing ready work.
+- Source planning and first-batch generation use separate client-triggered
+  requests so neither operation consumes the full serverless time budget.
+- Provider quota/timeout failures fall back to deterministic source coverage
+  and exact-sentence questions. These emergency questions remain fail-closed:
+  the alternate configured verifier must approve them before they are playable.
 - Evidence is withheld from the play payload and revealed only by the
   answer-check API.
 - Prompt-only quizzes require Gemini Search grounding with two domains and one

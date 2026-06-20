@@ -8,7 +8,31 @@ import {
 
 export type StructuredProvider = "gemini" | "hf";
 
-function preferredOrder(): StructuredProvider[] {
+function preferredOrder(
+  preferredProvider?: StructuredProvider
+): StructuredProvider[] {
+  if (preferredProvider) {
+    return preferredProvider === "gemini"
+      ? ["gemini", "hf"]
+      : ["hf", "gemini"];
+  }
+  const structuredPreference = process.env.STRUCTURED_LLM_PROVIDER;
+  if (
+    structuredPreference === "gemini" ||
+    structuredPreference === "google"
+  ) {
+    return ["gemini", "hf"];
+  }
+  if (
+    structuredPreference === "hf" ||
+    structuredPreference === "huggingface"
+  ) {
+    return ["hf", "gemini"];
+  }
+  // Gemini enforces the response schema at the API boundary. Prefer it for
+  // evidence blueprints/questions when available instead of spending most of a
+  // serverless request waiting for an HF timeout before falling back.
+  if (process.env.GEMINI_API_KEY) return ["gemini", "hf"];
   const preferred =
     process.env.LLM_PROVIDER === "gemini" ||
     process.env.LLM_PROVIDER === "google"
@@ -29,9 +53,10 @@ export async function callStructuredWithFallback(opts: {
   schema: unknown;
   maxTokens: number;
   timeoutMs: number;
+  preferredProvider?: StructuredProvider;
 }): Promise<{ raw: unknown; provider: StructuredProvider; model: string }> {
   let lastError: unknown;
-  for (const provider of preferredOrder()) {
+  for (const provider of preferredOrder(opts.preferredProvider)) {
     if (!configured(provider)) continue;
     try {
       if (provider === "gemini") {

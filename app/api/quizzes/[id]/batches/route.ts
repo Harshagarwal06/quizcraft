@@ -9,6 +9,7 @@ import { processEvidenceBatch } from "@/lib/pipeline/quiz-pipeline";
 
 const bodySchema = z.object({
   retryFailed: z.boolean().optional().default(false),
+  firstBatchOnly: z.boolean().optional().default(false),
 });
 
 export async function POST(
@@ -34,11 +35,28 @@ export async function POST(
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
+  await prisma.quizGenerationBatch.updateMany({
+    where: {
+      quizId: id,
+      status: { in: ["generating", "verifying"] },
+      startedAt: { lt: new Date(Date.now() - 90_000) },
+    },
+    data: {
+      status: "failed",
+      errorCode: "STALE_BATCH",
+      errorMessage: "The previous batch request did not finish. It can be retried.",
+      completedAt: new Date(),
+    },
+  });
   const status = parsed.data.retryFailed ? "failed" : "pending";
   const batches = await prisma.quizGenerationBatch.findMany({
-    where: { quizId: id, status },
+    where: {
+      quizId: id,
+      status,
+      ...(parsed.data.firstBatchOnly ? { batchIndex: 0 } : {}),
+    },
     orderBy: { batchIndex: "asc" },
-    take: 2,
+    take: parsed.data.firstBatchOnly ? 1 : 2,
     select: { batchIndex: true },
   });
   if (batches.length === 0) {

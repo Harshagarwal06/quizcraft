@@ -28,6 +28,55 @@ export default function GeneratePage() {
     return () => clearInterval(timer);
   }, [loading]);
 
+  async function readJsonResponse(res: Response) {
+    const text = await res.text();
+    if (!text) {
+      throw new Error(
+        res.status === 504
+          ? "Quiz generation exceeded the server time limit."
+          : `The server returned an empty response (${res.status}).`
+      );
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(
+        res.ok
+          ? "The server returned an invalid response."
+          : `Quiz generation failed on the server (${res.status}).`
+      );
+    }
+  }
+
+  async function prepareFirstBatch(quizId: string) {
+    const res = await fetch(`/api/quizzes/${quizId}/batches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ firstBatchOnly: true }),
+    });
+    const data = await readJsonResponse(res);
+    if (!res.ok && res.status !== 202) {
+      throw new Error(data.error ?? "Couldn't prepare the first questions.");
+    }
+    const firstBatch = Array.isArray(data.batches) ? data.batches[0] : null;
+    if (firstBatch?.status === "ready") return;
+
+    const snapshotResponse = await fetch(`/api/quizzes/${quizId}`);
+    const snapshot = await readJsonResponse(snapshotResponse);
+    if (
+      snapshotResponse.ok &&
+      snapshot.generation?.readyCount >= 3
+    ) {
+      return;
+    }
+    throw new Error(
+      firstBatch?.error ??
+        (snapshot.generation?.status === "failed"
+          ? "The first verified questions could not be prepared. Please retry."
+          : "The first verified questions are still preparing. Please retry.")
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoadingStage(0);
@@ -42,10 +91,13 @@ export default function GeneratePage() {
         form.append("file", file);
         if (userPrompt) form.append("userPrompt", userPrompt);
         form.append("questionCount", String(questionCount));
-        res = await fetch("/api/quizzes", { method: "POST", body: form });
+        res = await fetch("/api/quizzes?deferFirstBatch=1", {
+          method: "POST",
+          body: form,
+        });
       } else {
         const content = tab === "notes" ? notes : prompt;
-        res = await fetch("/api/quizzes", {
+        res = await fetch("/api/quizzes?deferFirstBatch=1", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -57,8 +109,8 @@ export default function GeneratePage() {
         });
       }
 
-      if (!res.ok) {
-        const data = await res.json();
+      const data = await readJsonResponse(res);
+      if (!res.ok && res.status !== 202) {
         // Include the server-provided detail (provider/quota/config reason) so
         // failures are self-diagnosing instead of a generic message.
         const detail = data.detail ? ` (${data.provider ?? "llm"}: ${data.detail})` : "";
@@ -66,10 +118,15 @@ export default function GeneratePage() {
         return;
       }
 
-      const quiz = await res.json();
-      router.push(`/quiz/${quiz.id}`);
-    } catch {
-      setError("Network error. Please try again.");
+      setLoadingStage(2);
+      await prepareFirstBatch(data.id);
+      router.push(`/quiz/${data.id}`);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Network error. Please check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }

@@ -56,6 +56,18 @@ export function selectVerifier(): VerifierInfo | null {
   return null;
 }
 
+export function selectAlternateVerifier(
+  current: VerifierInfo
+): VerifierInfo | null {
+  if (current.provider !== "hf" && process.env.HF_API_KEY) {
+    return { provider: "hf", model: HF_MODEL_NAME };
+  }
+  if (current.provider !== "gemini" && process.env.GEMINI_API_KEY) {
+    return { provider: "gemini", model: geminiModelName() };
+  }
+  return null;
+}
+
 async function requestVerdicts(
   material: string,
   questions: AuditQuestion[],
@@ -205,4 +217,51 @@ export async function verifyQuestions(
     (question, index) =>
       results.get(index) ?? incompleteVerdict(question, index)
   );
+}
+
+/**
+ * Keep verification fail-closed while tolerating a provider outage or exhausted
+ * quota. Only slots that the primary provider left incomplete are retried with
+ * the other configured provider.
+ */
+export async function verifyQuestionsWithFallback(
+  material: string,
+  questions: AuditQuestion[],
+  info: VerifierInfo,
+  timeoutMs: number = VERIFY_TIMEOUT_MS
+): Promise<{ verdicts: QuestionVerdict[]; verifierModel: string }> {
+  const primary = await verifyQuestions(material, questions, info, timeoutMs);
+  const incompleteIndexes = primary
+    .map((verdict, index) => (verdict.complete === false ? index : -1))
+    .filter((index) => index >= 0);
+  const alternate = selectAlternateVerifier(info);
+  if (incompleteIndexes.length === 0 || !alternate) {
+    return { verdicts: primary, verifierModel: info.model };
+  }
+
+  console.warn(
+    `[verify] ${info.provider} left ${incompleteIndexes.length} incomplete verdict(s); trying ${alternate.provider}`
+  );
+  const fallback = await verifyQuestions(
+    material,
+    incompleteIndexes.map((index) => questions[index]),
+    alternate,
+    Math.min(timeoutMs, 30_000)
+  );
+  let usedFallback = false;
+  const verdicts = primary.slice();
+  fallback.forEach((verdict, localIndex) => {
+    if (verdict.complete === false) return;
+    const originalIndex = incompleteIndexes[localIndex];
+    verdicts[originalIndex] = { ...verdict, index: originalIndex };
+    usedFallback = true;
+  });
+  return {
+    verdicts,
+    verifierModel: usedFallback
+      ? incompleteIndexes.length === questions.length
+        ? alternate.model
+        : `${info.model} + ${alternate.model}`
+      : info.model,
+  };
 }
