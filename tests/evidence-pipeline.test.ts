@@ -16,7 +16,9 @@ import { providerVerificationResultSchema } from "../lib/llm/verify/types";
 import {
   classifyAuthority,
   groundedSourceFromMetadata,
+  researchGroundedTopic,
 } from "../lib/source/web-grounding";
+import { researchWikimediaTopic } from "../lib/source/wikimedia-grounding";
 import {
   buildDeterministicEvidenceQuestions,
   validateGeneratedBatch,
@@ -308,6 +310,15 @@ test("evidence generation rejects topic drift and non-matching quotes", () => {
       .length,
     1
   );
+  assert.throws(
+    () =>
+      validateGeneratedBatch({
+        raw: valid,
+        items: [item],
+        previousStems: [valid.questions[0].stem],
+      }),
+    /repeats an existing stem/
+  );
   const invalid = structuredClone(valid);
   invalid.questions[0].evidence[0].quote = "An unsupported invented statement.";
   assert.throws(
@@ -387,6 +398,48 @@ test("deterministic evidence fallback creates exact cited questions", () => {
   );
 });
 
+test("deterministic evidence fallback avoids duplicate stems", () => {
+  const baseItem: EvidenceBlueprintItem = {
+    id: "item-1",
+    slot: 0,
+    topic: "Osmosis",
+    objective: "Apply osmosis to a source-supported example",
+    difficulty: "medium",
+    skillType: "application",
+    retrievalQuery: "osmosis water membrane",
+    requiredFacts: ["Osmosis moves water across a membrane."],
+    chunks: [
+      {
+        id: "chunk-1",
+        text: "Osmosis moves water across a selectively permeable membrane.",
+        normalizedText:
+          "osmosis moves water across a selectively permeable membrane",
+        pageStart: 1,
+        section: "Osmosis",
+      },
+    ],
+  };
+  const first = buildDeterministicEvidenceQuestions({
+    items: [baseItem],
+    previousStems: [],
+  });
+  const repeatedItems = Array.from({ length: 6 }, (_, index) => ({
+    ...baseItem,
+    id: `item-${index + 2}`,
+    slot: index + 1,
+  }));
+  const questions = buildDeterministicEvidenceQuestions({
+    items: repeatedItems,
+    previousStems: [first[0].stem],
+  });
+
+  assert.equal(questions.length, repeatedItems.length);
+  assert.equal(
+    new Set([first[0].stem, ...questions.map((question) => question.stem)]).size,
+    repeatedItems.length + 1
+  );
+});
+
 test("web source policy rejects forums and recognizes authorities", () => {
   assert.equal(classifyAuthority("reddit.com"), "rejected");
   assert.equal(classifyAuthority("example.edu"), "authoritative");
@@ -425,4 +478,102 @@ test("web grounding keeps only supported passages and maps their sources", () =>
   assert.equal(result.references[1].supportedTexts?.length, 1);
   assert.equal(chunkExtractedSource(result.extracted).length, 2);
   assert.doesNotMatch(result.extracted.fullText, /unsupported/i);
+});
+
+test("Wikimedia grounding builds a cited fallback from retrieved excerpts", async () => {
+  const mockFetch = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    const project = url.hostname;
+    const suffix = project.startsWith("simple.") ? "Simple" : "Detailed";
+    if (url.pathname.includes("/search/page")) {
+      return new Response(
+        JSON.stringify({
+          pages: [{ key: `${suffix}_Osmosis`, title: `${suffix} Osmosis` }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        type: "standard",
+        title: `${suffix} Osmosis`,
+        extract:
+          "Osmosis is the net movement of water through a selectively permeable membrane from a region of higher water potential to a region of lower water potential. This process continues until equilibrium is approached and is important in biological cells.",
+        content_urls: {
+          desktop: {
+            page: `https://${project}/wiki/${suffix}_Osmosis`,
+          },
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  const result = await researchWikimediaTopic("osmosis", mockFetch);
+  assert.ok(result.extracted.fullText.length >= 500);
+  assert.ok(result.references.length >= 2);
+  assert.ok(
+    result.references.every(
+      (reference) =>
+        reference.authority === "established" &&
+        reference.supportedTexts?.length === 1
+    )
+  );
+  assert.equal(result.extracted.metadata?.groundingProvider, "wikimedia");
+});
+
+test("web grounding falls back to Wikimedia when Gemini is quota-exhausted", async () => {
+  const previousKey = process.env.GEMINI_API_KEY;
+  const previousFallback = process.env.WIKIMEDIA_GROUNDING_FALLBACK;
+  process.env.GEMINI_API_KEY = "test-key";
+  delete process.env.WIKIMEDIA_GROUNDING_FALLBACK;
+  const mockFetch = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    if (url.hostname === "generativelanguage.googleapis.com") {
+      return new Response(
+        JSON.stringify({ error: { message: "Quota exceeded." } }),
+        { status: 429, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (url.pathname.includes("/search/page")) {
+      return new Response(
+        JSON.stringify({
+          pages: [{ key: "Osmosis", title: "Osmosis" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        type: "standard",
+        title: `Osmosis on ${url.hostname}`,
+        extract:
+          "Osmosis is the movement of water across a selectively permeable membrane. Water movement depends on differences in water potential, and the process affects cell volume, transport, and physiological balance in living organisms.",
+        content_urls: {
+          desktop: {
+            page: `https://${url.hostname}/wiki/Osmosis`,
+          },
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  try {
+    const result = await researchGroundedTopic(
+      "osmosis",
+      undefined,
+      mockFetch
+    );
+    assert.equal(result.provider, "wikimedia");
+    assert.ok(result.references.length >= 2);
+  } finally {
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
+    if (previousFallback === undefined) {
+      delete process.env.WIKIMEDIA_GROUNDING_FALLBACK;
+    } else {
+      process.env.WIKIMEDIA_GROUNDING_FALLBACK = previousFallback;
+    }
+  }
 });

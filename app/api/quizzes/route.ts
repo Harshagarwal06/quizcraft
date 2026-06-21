@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
         sourceTitle = parsed.data.content.slice(0, 100);
         await recordGenerationTrace({
           stage: "web_research",
+          provider: grounded.provider,
           durationMs: Date.now() - researchStarted,
           status: "success",
         });

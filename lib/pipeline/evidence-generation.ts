@@ -131,16 +131,31 @@ const RESPONSE_SCHEMA = {
   required: ["questions"],
 };
 
-function buildBatchPrompt(items: EvidenceBlueprintItem[]): string {
+function buildBatchPrompt(
+  items: EvidenceBlueprintItem[],
+  previousStems: string[]
+): string {
   const lines = [
     `Create exactly ${items.length} multiple-choice questions, one for each blueprint item.`,
     "Follow every blueprint item exactly. Use only its evidence chunks.",
     "Exactly one option is correct and provable from the evidence; the other three must be refuted by it.",
     "Give all four options distinct text, parallel in length and grammar; never signal the answer through wording.",
     "Write a self-contained stem — do not mention the source, passage, text, or chunk.",
+    "Every stem in this response must be distinct and must not repeat or closely rephrase an existing stem.",
     "Evidence quotes must be copied verbatim from the named chunk.",
     "Each distractor explanation must state the specific misconception or source conflict.",
   ];
+  const stemsToAvoid = previousStems
+    .map((stem) => stem.trim().slice(0, 240))
+    .filter(Boolean)
+    .slice(-60);
+  if (stemsToAvoid.length > 0) {
+    lines.push(
+      "",
+      "EXISTING STEMS TO AVOID:",
+      ...stemsToAvoid.map((stem) => `- ${stem}`)
+    );
+  }
   for (const item of items) {
     lines.push(
       "",
@@ -172,10 +187,42 @@ function exactSupportQuote(chunkText: string, offset: number): string {
   return quote.slice(0, 320);
 }
 
+function uniqueDeterministicStem(opts: {
+  item: EvidenceBlueprintItem;
+  cue: string;
+  seenStems: Set<string>;
+}): string {
+  const objective = opts.item.objective.trim().replace(/[.?!]+$/, "");
+  const candidates = [
+    `Which option accurately states the supported fact about ${opts.cue}?`,
+    `Which statement best addresses this objective: ${objective}?`,
+    `For ${opts.item.topic}, which option is accurate about ${opts.cue}?`,
+    `Which statement correctly connects ${opts.cue} with ${opts.item.topic}?`,
+  ];
+  for (const candidate of candidates) {
+    if (!opts.seenStems.has(normalizeEvidenceText(candidate))) {
+      return candidate;
+    }
+  }
+
+  // This is only a last-resort path for heavily repeated source material. Keep
+  // producing a playable question instead of surfacing a recoverable duplicate
+  // stem validation error to the learner.
+  let variation = 2;
+  while (true) {
+    const candidate = `Variation ${variation}: which option accurately states the supported fact about ${opts.cue}?`;
+    if (!opts.seenStems.has(normalizeEvidenceText(candidate))) {
+      return candidate;
+    }
+    variation += 1;
+  }
+}
+
 export function buildDeterministicEvidenceQuestions(opts: {
   items: EvidenceBlueprintItem[];
   previousStems: string[];
 }): GeneratedQuestion[] {
+  const seenStems = new Set(opts.previousStems.map(normalizeEvidenceText));
   const raw = {
     questions: opts.items.map((item) => {
       const chunk = item.chunks[0];
@@ -188,9 +235,11 @@ export function buildDeterministicEvidenceQuestions(opts: {
           .slice(0, 2)
           .map((word) => word.replace(/\b\w/g, (letter) => letter.toUpperCase()))
           .join(" ") || item.topic;
+      const stem = uniqueDeterministicStem({ item, cue, seenStems });
+      seenStems.add(normalizeEvidenceText(stem));
       return {
         blueprintItemId: item.id,
-        stem: `Which option accurately reproduces the source's statement about ${cue} without changing its meaning?`,
+        stem,
         options: [
           { id: "A" as const, text: quote },
           {
@@ -307,13 +356,16 @@ export async function generateEvidenceBatch(opts: {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
+      const retryFeedback =
+        attempt > 0 && lastError
+          ? `\nThe prior response failed validation: ${
+              lastError instanceof Error ? lastError.message : String(lastError)
+            } Generate fresh, distinct stems while preserving exact item IDs, topics, difficulties, quotes, and counts.`
+          : "";
       const response = await callStructuredWithFallback({
         system: EVIDENCE_SYSTEM_PROMPT,
         user:
-          buildBatchPrompt(opts.items) +
-          (attempt > 0
-            ? "\nThe prior response failed validation. Preserve exact item IDs, topics, difficulties, quotes, and counts."
-            : ""),
+          buildBatchPrompt(opts.items, opts.previousStems) + retryFeedback,
         schema: RESPONSE_SCHEMA,
         maxTokens: Math.min(2_200, 450 + opts.items.length * 450),
         timeoutMs: 25_000,

@@ -1,5 +1,6 @@
 import type { ExtractedSource } from "@/lib/extract";
 import type { GroundedReference } from "./store";
+import { researchWikimediaTopic } from "./wikimedia-grounding";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const TIMEOUT_MS = 18_000;
@@ -243,7 +244,8 @@ export function groundedSourceFromMetadata(
 async function groundedCall(
   topic: string,
   userPrompt: string | undefined,
-  strict: boolean
+  strict: boolean,
+  fetchImpl: typeof fetch
 ): Promise<{ text: string; metadata: GroundingMetadata | undefined }> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
@@ -260,7 +262,7 @@ async function groundedCall(
     : "Prefer authoritative sources such as government agencies, universities, standards bodies, official documentation, and established reference publishers.";
 
   try {
-    const response = await fetch(
+    const response = await fetchImpl(
       `${ENDPOINT}/${model}:generateContent?key=${key}`,
       {
         method: "POST",
@@ -328,29 +330,61 @@ async function groundedCall(
 
 export async function researchGroundedTopic(
   topic: string,
-  userPrompt?: string
+  userPrompt?: string,
+  fetchImpl: typeof fetch = fetch
 ): Promise<{
   extracted: ExtractedSource;
   references: GroundedReference[];
+  provider: "gemini-search" | "wikimedia";
 }> {
   if (process.env.WEB_GROUNDING_ENABLED === "false") {
     throw new WebGroundingError("disabled", "Web grounding is disabled.");
   }
-  let last:
-    | { text: string; metadata: GroundingMetadata | undefined }
-    | undefined;
-  for (const strict of [false, true]) {
-    last = await groundedCall(topic, userPrompt, strict);
-    const grounded = groundedSourceFromMetadata(topic, last.text, last.metadata);
-    if (
-      grounded.extracted.pages.length > 0 &&
-      validateReferences(grounded.references)
-    ) {
-      return grounded;
+  let primaryError: WebGroundingError;
+  try {
+    for (const strict of [false, true]) {
+      const result = await groundedCall(topic, userPrompt, strict, fetchImpl);
+      const grounded = groundedSourceFromMetadata(
+        topic,
+        result.text,
+        result.metadata
+      );
+      if (
+        grounded.extracted.pages.length > 0 &&
+        validateReferences(grounded.references)
+      ) {
+        return { ...grounded, provider: "gemini-search" };
+      }
+    }
+    primaryError = new WebGroundingError(
+      "insufficient_sources",
+      "Could not find enough authoritative sources with Gemini Search."
+    );
+  } catch (error) {
+    primaryError =
+      error instanceof WebGroundingError
+        ? error
+        : new WebGroundingError(
+            "provider_unavailable",
+            error instanceof Error ? error.message : String(error)
+          );
+  }
+
+  if (process.env.WIKIMEDIA_GROUNDING_FALLBACK !== "false") {
+    try {
+      const fallback = await researchWikimediaTopic(topic, fetchImpl);
+      return { ...fallback, provider: "wikimedia" };
+    } catch (fallbackError) {
+      throw new WebGroundingError(
+        primaryError.code,
+        `${primaryError.message} Wikimedia fallback failed: ${
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : String(fallbackError)
+        }`
+      );
     }
   }
-  throw new WebGroundingError(
-    "insufficient_sources",
-    "Could not find enough authoritative sources. Upload notes or a PDF instead."
-  );
+
+  throw primaryError;
 }

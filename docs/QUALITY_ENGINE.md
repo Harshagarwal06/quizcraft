@@ -113,8 +113,11 @@ tolerant of HF's loose JSON.
   the alternate configured verifier must approve them before they are playable.
 - Evidence is withheld from the play payload and revealed only by the
   answer-check API.
-- Prompt-only quizzes require Gemini Search grounding with two domains and one
-  authoritative source. Existing quizzes remain evidence-free legacy quizzes.
+- Prompt-only quizzes prefer Gemini Search grounding with two domains and one
+  authoritative source. When Gemini is unavailable or quota-exhausted, a
+  key-free Wikimedia fallback supplies cited excerpts from at least two
+  substantial reference pages. Existing quizzes remain evidence-free legacy
+  quizzes.
 
 **Key files:** `lib/source/*`, `lib/llm/blueprint.ts`,
 `lib/pipeline/{evidence-generation,quiz-pipeline,trace}.ts`,

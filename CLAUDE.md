@@ -131,10 +131,12 @@ used. If question generation is also unavailable, conservative extractive
 questions are built from exact source sentences and still must pass the other
 configured verifier before play.
 
-Prompt-only quizzes first create a Gemini Google Search brief. The brief is
-accepted only with grounding metadata, at least two distinct source domains,
-and at least one authoritative source; otherwise the user is asked to upload
-notes or a PDF. External references and supported passages are persisted.
+Prompt-only quizzes first try to create a Gemini Google Search brief. Gemini
+results are accepted only with grounding metadata, at least two distinct source
+domains, and at least one authoritative source. If Gemini is unavailable or
+quota-exhausted, a key-free fallback retrieves substantial excerpts from at
+least two Wikimedia reference pages. Both paths persist source URLs and exact
+supported passages, and downstream generation remains fail-closed.
 
 Legacy quizzes remain playable and the old full-text path remains behind
 `EVIDENCE_PIPELINE_ENABLED=false` for rollout rollback only.
@@ -284,6 +286,8 @@ See `.env.example`. Key ones:
 - `HF_API_KEY` (HuggingFace) / `GEMINI_API_KEY` + `GEMINI_MODEL` (Gemini)
 - `EVIDENCE_PIPELINE_ENABLED` (default on) — new source/blueprint/batch pipeline
 - `WEB_GROUNDING_ENABLED` (default on) — prompt-only Gemini Search grounding
+- `WIKIMEDIA_GROUNDING_FALLBACK` (default on) — key-free cited-excerpt fallback
+  when Gemini Search is unavailable or quota-exhausted
 - `TRUSTED_SOURCE_DOMAINS` — optional comma-separated authority additions
 - `COACH_AGENT_ENABLED` (default on) — enable Study Coach APIs and dashboard UI
 - `COACH_AGENT_SHADOW` (default off) — record planner runs without surfacing proposals
