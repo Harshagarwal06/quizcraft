@@ -174,13 +174,46 @@ function buildBatchPrompt(
   return lines.join("\n");
 }
 
+/**
+ * Strip markdown formatting, quiz/exam artifacts, and other noise from chunk
+ * text so that deterministic fallback questions don't surface raw formatting
+ * to the user (e.g. "**Question 5:** ..." or "**Answer: d) Leukemia**").
+ */
+function sanitizeChunkText(text: string): string {
+  return (
+    text
+      // Remove markdown bold/italic markers
+      .replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1")
+      // Remove markdown heading markers
+      .replace(/^#{1,6}\s+/gm, "")
+      // Remove quiz-format labels like "Question 5:", "Answer:", "Explanation:"
+      .replace(/\b(Question|Answer|Explanation|Solution|Hint|Note)\s*\d*\s*[:)]\s*/gi, "")
+      // Remove answer-key patterns like "d) Leukemia" at line starts
+      .replace(/^[a-dA-D]\)\s*/gm, "")
+      // Collapse multiple whitespace / newlines into single spaces
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+/**
+ * Returns true if a sentence looks like quiz/exam formatting rather than
+ * factual educational content (e.g. "Question 5: ...", "Answer: d) ...").
+ */
+function isQuizArtifact(sentence: string): boolean {
+  return /^\s*(question|answer|explanation|solution|hint|note)\b/i.test(sentence) ||
+    /^\s*[a-d]\)/i.test(sentence) ||
+    /\*\*(question|answer|explanation)\b/i.test(sentence);
+}
+
 function exactSupportQuote(chunkText: string, offset: number): string {
-  const sentences = chunkText
+  const cleaned = sanitizeChunkText(chunkText);
+  const sentences = cleaned
     .split(/(?<=[.!?])\s+/)
     .map((value) => value.trim())
-    .filter((value) => value.length >= 12);
+    .filter((value) => value.length >= 12 && !isQuizArtifact(value));
   const quote =
-    sentences[offset % Math.max(1, sentences.length)] ?? chunkText.trim();
+    sentences[offset % Math.max(1, sentences.length)] ?? cleaned.trim();
   if (quote.length < 12) {
     throw new Error("The evidence chunk is too short for a supported question.");
   }
