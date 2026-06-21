@@ -129,7 +129,7 @@ questions **with the eval judge** after repair.
 Required environment variables are the same as the app:
 
 - `HF_API_KEY` for HuggingFace
-- `GEMINI_API_KEY` for Gemini
+- `GEMINI_API_KEY_1..3` for Gemini (`GEMINI_API_KEY` remains supported)
 - optional `GEMINI_MODEL`
 - optional `EVAL_JUDGE_PROVIDER` = `hf` | `gemini` (set it to the provider the
   repair loop does NOT use to get an independent post-repair number)

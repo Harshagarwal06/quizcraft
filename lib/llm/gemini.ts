@@ -1,6 +1,10 @@
 import { generatedQuizSchema, GeneratedQuiz, GenerationInput, QuizGenerator } from "./types";
 import { buildUserMessage, generationSystemPrompt } from "./prompt";
 import { validateReviewQuiz } from "./review";
+import {
+  fetchGeminiWithFallback,
+  hasGeminiApiKeys,
+} from "./gemini-keys";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 // Cap a single generation so the route's maxDuration (60s) isn't exceeded even
@@ -43,28 +47,24 @@ const RESPONSE_SCHEMA = {
 
 /**
  * Generates a quiz with Google Gemini using structured JSON output. Lets the
- * whole app run on a single GEMINI_API_KEY (same key as the expansion stage).
+ * whole app run on the shared Gemini key pool used by the expansion stage.
  */
 export class GeminiGenerator implements QuizGenerator {
-  private apiKey: string;
   private model: string;
 
   constructor() {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error("GEMINI_API_KEY environment variable is not set");
-    this.apiKey = key;
+    if (!hasGeminiApiKeys()) {
+      throw new Error("No Gemini API key is configured.");
+    }
     this.model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
   }
 
   private async callModel(input: GenerationInput): Promise<string> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const url = `${ENDPOINT}/${this.model}:generateContent?key=${this.apiKey}`;
-      const response = await fetch(url, {
+    const response = await fetchGeminiWithFallback({
+      endpoint: `${ENDPOINT}/${this.model}:generateContent`,
+      init: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: generationSystemPrompt(input) }] },
           contents: [{ role: "user", parts: [{ text: buildUserMessage(input) }] }],
@@ -77,24 +77,19 @@ export class GeminiGenerator implements QuizGenerator {
             thinkingConfig: { thinkingBudget: 0 },
           },
         }),
-      });
+      },
+      timeoutMs: TIMEOUT_MS,
+      label: "Gemini quiz generation",
+    });
 
-      if (!response.ok) {
-        const err = await response.text().catch(() => response.statusText);
-        throw new Error(`Gemini API error ${response.status}: ${err}`);
-      }
-
-      const data = (await response.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] } }[];
-      };
-      const text = data.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text ?? "")
-        .join("");
-      if (!text) throw new Error("Empty response from Gemini API");
-      return text;
-    } finally {
-      clearTimeout(timer);
-    }
+    const data = (await response.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    };
+    const text = data.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text ?? "")
+      .join("");
+    if (!text) throw new Error("Empty response from Gemini API");
+    return text;
   }
 
   async generate(input: GenerationInput): Promise<GeneratedQuiz> {
@@ -117,7 +112,9 @@ export class GeminiGenerator implements QuizGenerator {
         return parsed.data;
       } catch (err) {
         lastError = err;
-        const timedOut = err instanceof Error && err.name === "AbortError";
+        const timedOut =
+          err instanceof Error &&
+          (err.name === "AbortError" || /timed out/i.test(err.message));
         console.warn(
           `[gemini] generation attempt ${attempt} failed${timedOut ? " (timeout)" : ""}:`,
           err

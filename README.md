@@ -57,7 +57,9 @@ AUTH_TRUST_HOST="true"
 # Choose your AI provider
 LLM_PROVIDER="hf"               # "hf" | "gemini"
 HF_API_KEY="hf_..."             # if using HuggingFace
-GEMINI_API_KEY="..."            # Gemini generation and prompt-only web grounding
+GEMINI_API_KEY_1="..."          # Gemini generation and web grounding
+GEMINI_API_KEY_2="..."          # optional failover key from another project
+GEMINI_API_KEY_3="..."          # optional third project
 EVIDENCE_PIPELINE_ENABLED="true"
 WEB_GROUNDING_ENABLED="true"
 COACH_AGENT_ENABLED="true"

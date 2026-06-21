@@ -23,7 +23,7 @@ npx prisma migrate dev   # create/apply a migration locally (file DB)
 npx prisma generate      # regenerate the Prisma client (also runs postinstall)
 
 npm run eval        # offline (synthetic) Quality-Engine eval — deterministic, no keys
-npm run eval:live   # live eval (needs GEMINI_API_KEY; paid tier — free tier is 20/day)
+npm run eval:live   # live eval (needs a Gemini key; paid tier recommended)
 npm run eval:check  # offline regression gate vs eval/baseline.json (used by CI)
 ```
 
@@ -258,9 +258,11 @@ still describes the sign-in flow; treat this file as the source of truth.)
   salvage of truncated output, retries up to 2×). This is what `.env.example`
   ships with, and the **code default** when `LLM_PROVIDER` is unset.
 - `gemini` / `google` → `GeminiGenerator` (`lib/llm/gemini.ts`; structured JSON
-  output via `responseSchema`, thinking disabled, retries up to 2×). Uses the
-  same `GEMINI_API_KEY` / `GEMINI_MODEL` as the expansion stage, so the whole
-  app can run on a single Gemini key.
+  output via `responseSchema`, thinking disabled, retries up to 2×). All Gemini
+  call paths share a pool of up to three keys (`GEMINI_API_KEY_1..3`, preferably
+  from different projects) and fail over on quota/auth errors, timeouts, network
+  failures, and temporary 5xx responses. `GEMINI_API_KEY` remains supported for
+  single-key deployments.
 
 To add a provider: implement the `QuizGenerator` interface from `lib/llm/types.ts`,
 reuse `SYSTEM_PROMPT`/`buildUserMessage` from `lib/llm/prompt.ts`, and register
@@ -283,7 +285,8 @@ See `.env.example`. Key ones:
 - `EVAL_JUDGE_PROVIDER` (optional) = `hf` | `gemini` — independent judge for the
   Phase 2 eval harness (`npm run eval:live`); defaults to the provider opposite
   `LLM_PROVIDER`. Not used by the running app.
-- `HF_API_KEY` (HuggingFace) / `GEMINI_API_KEY` + `GEMINI_MODEL` (Gemini)
+- `HF_API_KEY` (HuggingFace) / `GEMINI_API_KEY_1..3` + `GEMINI_MODEL`
+  (Gemini; legacy `GEMINI_API_KEY` remains supported)
 - `EVIDENCE_PIPELINE_ENABLED` (default on) — new source/blueprint/batch pipeline
 - `WEB_GROUNDING_ENABLED` (default on) — prompt-only Gemini Search grounding
 - `WIKIMEDIA_GROUNDING_FALLBACK` (default on) — key-free cited-excerpt fallback

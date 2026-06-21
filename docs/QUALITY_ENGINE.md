@@ -191,7 +191,7 @@ is only cited as independent when the eval judge differs from the repair verifie
 (`postRepairIndependent` in the report); otherwise it is self-consistency, not a
 result. **Offline `npm run eval` numbers are synthetic plumbing tests, never cited.**
 
-**Live numbers:** _pending a `npm run eval:live` run with `GEMINI_API_KEY` set_ —
+**Live numbers:** _pending a `npm run eval:live` run with a Gemini key set_ —
 this section will be filled with the live, calibrated κ + baseline error rate
 (judge model + date) once that run completes.
 
@@ -233,8 +233,11 @@ this section will be filled with the live, calibrated κ + baseline error rate
 - **Rollout flags:** `EVIDENCE_PIPELINE_ENABLED`, `WEB_GROUNDING_ENABLED`,
   `COACH_AGENT_ENABLED`, `COACH_AGENT_SHADOW`, and optional
   `TRUSTED_SOURCE_DOMAINS`.
-- **Keys:** `HF_API_KEY`, `GEMINI_API_KEY` (+ optional `GEMINI_MODEL`). Gemini's key
-  also powers topic expansion, so the whole app can run on one Gemini key.
+- **Keys:** `HF_API_KEY`, `GEMINI_API_KEY_1..3` (+ optional `GEMINI_MODEL`;
+  legacy `GEMINI_API_KEY` remains supported). Gemini calls share the pool and
+  automatically move to another key after quota/auth errors, timeouts, network
+  failures, or temporary 5xx responses. Use keys from different Google projects
+  because Gemini quotas are project-scoped.
 - **Prod recommendation:** set `LLM_PROVIDER=gemini`. The HF free router (Qwen-72B)
   intermittently exceeds the 40s generation budget and causes "Couldn't generate
   the quiz"; Gemini's structured output returns reliably in ~20-25s and isn't

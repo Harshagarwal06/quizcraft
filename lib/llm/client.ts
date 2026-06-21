@@ -2,6 +2,11 @@
 // transport patterns in huggingface.ts / gemini.ts (AbortController timeout,
 // error shape) so callers like the verifier don't duplicate them.
 
+import {
+  fetchGeminiWithFallback,
+  GeminiRequestError,
+} from "./gemini-keys";
+
 const HF_ENDPOINT = "https://router.huggingface.co/v1/chat/completions";
 const HF_MODEL = "Qwen/Qwen2.5-72B-Instruct";
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -78,11 +83,9 @@ export async function callGeminiJSON(opts: {
   timeoutMs: number;
   model?: string;
 }): Promise<string> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY environment variable is not set");
   const model = opts.model ?? geminiModelName();
 
-  const url = `${GEMINI_ENDPOINT}/${model}:generateContent?key=${key}`;
+  const endpoint = `${GEMINI_ENDPOINT}/${model}:generateContent`;
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: opts.system }] },
     contents: [{ role: "user", parts: [{ text: opts.user }] }],
@@ -100,27 +103,17 @@ export async function callGeminiJSON(opts: {
   const maxRetries = process.env.EVAL_GEMINI_BACKOFF === "1" ? 8 : 0;
 
   for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body,
+      const response = await fetchGeminiWithFallback({
+        endpoint,
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        },
+        timeoutMs: opts.timeoutMs,
+        label: "Gemini API request",
       });
-
-      if (!response.ok) {
-        const err = await response.text().catch(() => response.statusText);
-        if ((response.status === 429 || response.status === 503) && attempt < maxRetries) {
-          clearTimeout(timer);
-          const m = err.match(/"retryDelay":\s*"(\d+)s"/);
-          const waitMs = Math.min(30_000, (m ? Number(m[1]) : 15) * 1000 + 1000);
-          await new Promise((r) => setTimeout(r, waitMs));
-          continue;
-        }
-        throw new Error(`Gemini API error ${response.status}: ${err}`);
-      }
 
       const data = (await response.json()) as {
         candidates?: { content?: { parts?: { text?: string }[] } }[];
@@ -128,8 +121,20 @@ export async function callGeminiJSON(opts: {
       const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
       if (!text) throw new Error("Empty response from Gemini API");
       return text;
-    } finally {
-      clearTimeout(timer);
+    } catch (error) {
+      if (
+        error instanceof GeminiRequestError &&
+        (error.status === 429 || error.status === 503) &&
+        attempt < maxRetries
+      ) {
+        const waitMs = Math.min(
+          30_000,
+          (error.retryAfterMs ?? 15_000) + 1000
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      throw error;
     }
   }
 }

@@ -5,6 +5,7 @@ import {
   geminiModelName,
   HF_MODEL_NAME,
 } from "./client";
+import { hasGeminiApiKeys } from "./gemini-keys";
 
 export type StructuredProvider = "gemini" | "hf";
 
@@ -32,7 +33,7 @@ function preferredOrder(
   // Gemini enforces the response schema at the API boundary. Prefer it for
   // evidence blueprints/questions when available instead of spending most of a
   // serverless request waiting for an HF timeout before falling back.
-  if (process.env.GEMINI_API_KEY) return ["gemini", "hf"];
+  if (hasGeminiApiKeys()) return ["gemini", "hf"];
   const preferred =
     process.env.LLM_PROVIDER === "gemini" ||
     process.env.LLM_PROVIDER === "google"
@@ -43,7 +44,7 @@ function preferredOrder(
 
 function configured(provider: StructuredProvider): boolean {
   return provider === "gemini"
-    ? Boolean(process.env.GEMINI_API_KEY)
+    ? hasGeminiApiKeys()
     : Boolean(process.env.HF_API_KEY);
 }
 

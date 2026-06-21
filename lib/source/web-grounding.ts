@@ -1,4 +1,8 @@
 import type { ExtractedSource } from "@/lib/extract";
+import {
+  fetchGeminiWithFallback,
+  hasGeminiApiKeys,
+} from "@/lib/llm/gemini-keys";
 import type { GroundedReference } from "./store";
 import { researchWikimediaTopic } from "./wikimedia-grounding";
 
@@ -247,85 +251,65 @@ async function groundedCall(
   strict: boolean,
   fetchImpl: typeof fetch
 ): Promise<{ text: string; metadata: GroundingMetadata | undefined }> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) {
+  if (!hasGeminiApiKeys()) {
     throw new WebGroundingError(
       "provider_unavailable",
-      "GEMINI_API_KEY is required for prompt grounding."
+      "A Gemini API key is required for Gemini Search grounding."
     );
   }
   const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const authorityInstruction = strict
     ? "Use only authoritative sources such as government agencies, universities, standards bodies, official documentation, and established reference publishers."
     : "Prefer authoritative sources such as government agencies, universities, standards bodies, official documentation, and established reference publishers.";
 
-  try {
-    const response = await fetchImpl(
-      `${ENDPOINT}/${model}:generateContent?key=${key}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          systemInstruction: {
+  const response = await fetchGeminiWithFallback({
+    endpoint: `${ENDPOINT}/${model}:generateContent`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [
+            {
+              text: `Research a university-exam study topic using Google Search. Produce a dense factual brief with definitions, mechanisms, comparisons, examples, and common misconceptions. ${authorityInstruction} Do not include unsupported claims.`,
+            },
+          ],
+        },
+        contents: [
+          {
+            role: "user",
             parts: [
               {
-                text: `Research a university-exam study topic using Google Search. Produce a dense factual brief with definitions, mechanisms, comparisons, examples, and common misconceptions. ${authorityInstruction} Do not include unsupported claims.`,
+                text: `Topic: ${topic}\nLearner focus: ${userPrompt || "general exam coverage"}`,
               },
             ],
           },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `Topic: ${topic}\nLearner focus: ${userPrompt || "general exam coverage"}`,
-                },
-              ],
-            },
-          ],
-          tools: [{ google_search: {} }],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 2200,
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        }),
-      }
+        ],
+        tools: [{ google_search: {} }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2200,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    },
+    timeoutMs: TIMEOUT_MS,
+    label: "Grounded research provider",
+    fetchImpl,
+  });
+  const data = (await response.json()) as GeminiGroundedResponse;
+  const candidate = data.candidates?.[0];
+  const text = candidate?.content?.parts
+    ?.map((part) => part.text ?? "")
+    .join("")
+    .trim();
+  if (!text) {
+    throw new WebGroundingError(
+      "provider_unavailable",
+      "Grounded research returned no brief."
     );
-    if (!response.ok) {
-      const detail = await response.text().catch(() => response.statusText);
-      let providerMessage = response.statusText;
-      try {
-        const parsed = JSON.parse(detail) as { error?: { message?: string } };
-        providerMessage =
-          parsed.error?.message?.split("\n")[0]?.trim() || providerMessage;
-      } catch {
-        providerMessage = detail.slice(0, 300) || providerMessage;
-      }
-      throw new WebGroundingError(
-        "provider_unavailable",
-        `Grounded research provider failed (${response.status}): ${providerMessage}`
-      );
-    }
-    const data = (await response.json()) as GeminiGroundedResponse;
-    const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts
-      ?.map((part) => part.text ?? "")
-      .join("")
-      .trim();
-    if (!text) {
-      throw new WebGroundingError(
-        "provider_unavailable",
-        "Grounded research returned no brief."
-      );
-    }
-    return { text, metadata: candidate?.groundingMetadata };
-  } finally {
-    clearTimeout(timer);
   }
+  return { text, metadata: candidate?.groundingMetadata };
 }
 
 export async function researchGroundedTopic(

@@ -14,6 +14,7 @@ import { VERIFIER_SYSTEM_PROMPT } from "../lib/llm/verify/prompt";
 import { questionVerdictSchema, type QuestionVerdict } from "../lib/llm/verify/types";
 import { verifyAndRepair, type Verdict } from "../lib/llm/verify/repair";
 import { HF_MODEL_NAME, geminiModelName } from "../lib/llm/client";
+import { hasGeminiApiKeys } from "../lib/llm/gemini-keys";
 import { retrieveChunks } from "../lib/source/retrieval";
 import { quoteExistsInChunk } from "../lib/source/chunk";
 import {
@@ -315,7 +316,9 @@ function judgeFor(provider: "hf" | "gemini"): VerifierInfo | null {
   if (provider === "hf") {
     return process.env.HF_API_KEY ? { provider: "hf", model: HF_MODEL_NAME } : null;
   }
-  return process.env.GEMINI_API_KEY ? { provider: "gemini", model: geminiModelName() } : null;
+  return hasGeminiApiKeys()
+    ? { provider: "gemini", model: geminiModelName() }
+    : null;
 }
 
 /**

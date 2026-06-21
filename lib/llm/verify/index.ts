@@ -5,6 +5,7 @@ import {
   geminiModelName,
   HF_MODEL_NAME,
 } from "../client";
+import { hasGeminiApiKeys } from "../gemini-keys";
 import { VERIFIER_SYSTEM_PROMPT, buildVerifierMessage } from "./prompt";
 import {
   AuditQuestion,
@@ -39,7 +40,7 @@ export function selectVerifier(): VerifierInfo | null {
   const genNorm = normalize(process.env.LLM_PROVIDER) ?? "hf";
   const opposite: VerifierProvider = genNorm === "hf" ? "gemini" : "hf";
   const hasHF = Boolean(process.env.HF_API_KEY);
-  const hasGemini = Boolean(process.env.GEMINI_API_KEY);
+  const hasGemini = hasGeminiApiKeys();
   const preferences: VerifierProvider[] = [];
   const explicit = normalize(process.env.VERIFIER_PROVIDER);
   if (explicit) preferences.push(explicit);
@@ -62,7 +63,7 @@ export function selectAlternateVerifier(
   if (current.provider !== "hf" && process.env.HF_API_KEY) {
     return { provider: "hf", model: HF_MODEL_NAME };
   }
-  if (current.provider !== "gemini" && process.env.GEMINI_API_KEY) {
+  if (current.provider !== "gemini" && hasGeminiApiKeys()) {
     return { provider: "gemini", model: geminiModelName() };
   }
   return null;
