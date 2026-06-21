@@ -667,38 +667,7 @@ export default function QuizPage() {
                 >
                   {r.explanation}
                 </p>
-                {r.evidence && r.evidence.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {r.evidence.map((evidence, evidenceIndex) => (
-                      <div
-                        key={`${r.questionId}-evidence-${evidenceIndex}`}
-                        className="rounded-lg border px-3 py-2 text-xs leading-relaxed"
-                        style={{ borderColor: "var(--border)" }}
-                      >
-                        <p>&ldquo;{evidence.quote}&rdquo;</p>
-                        <p className="mt-1 text-muted">
-                          {evidence.url ? (
-                            <a
-                              href={evidence.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-medium underline"
-                            >
-                              {evidence.sourceTitle}
-                            </a>
-                          ) : (
-                            evidence.sourceTitle
-                          )}
-                          {evidence.pageStart
-                            ? ` · page ${evidence.pageStart}`
-                            : evidence.section
-                              ? ` · ${evidence.section}`
-                              : ""}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {r.evidence && r.evidence.length > 0 ? null : null}
               </div>
             ))}
           </div>
@@ -889,53 +858,23 @@ export default function QuizPage() {
                 {checkResult.explanation}
               </p>
               {checkResult.optionExplanations && (
-                <div className="space-y-1.5">
-                  {q.options.map((option) => (
-                    <div
-                      key={`why-${option.id}`}
-                      className="rounded-lg px-3 py-2 text-xs leading-relaxed"
-                      style={{ backgroundColor: "var(--surface-sunk)" }}
-                    >
-                      <span className="mr-1 font-semibold">{option.id}.</span>
-                      {checkResult.optionExplanations?.[option.id]}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {checkResult.evidence.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Supporting evidence
-                  </p>
-                  {checkResult.evidence.map((evidence, evidenceIndex) => (
-                    <div
-                      key={`${q.id}-support-${evidenceIndex}`}
-                      className="rounded-lg border px-3 py-2 text-xs leading-relaxed"
-                      style={{ borderColor: "var(--border)" }}
-                    >
-                      <p>&ldquo;{evidence.quote}&rdquo;</p>
-                      <p className="mt-1 text-muted">
-                        {evidence.url ? (
-                          <a
-                            href={evidence.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="font-medium underline"
-                          >
-                            {evidence.sourceTitle}
-                          </a>
-                        ) : (
-                          evidence.sourceTitle
-                        )}
-                        {evidence.pageStart
-                          ? ` · page ${evidence.pageStart}`
-                          : evidence.section
-                            ? ` · ${evidence.section}`
-                            : ""}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                <details className="group">
+                  <summary className="cursor-pointer text-xs font-semibold text-indigo-600 hover:text-indigo-500 select-none">
+                    See why each option is correct or incorrect
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {q.options.map((option) => (
+                      <div
+                        key={`why-${option.id}`}
+                        className="rounded-lg px-3 py-2 text-xs leading-relaxed"
+                        style={{ backgroundColor: "var(--surface-sunk)" }}
+                      >
+                        <span className="mr-1 font-semibold">{option.id}.</span>
+                        {checkResult.optionExplanations?.[option.id]}
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
               <button onClick={handleNext} disabled={submitting} className="btn-primary w-full">
                 {submitting
